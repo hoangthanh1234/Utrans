@@ -6,3 +6,6 @@ dataset/__pycache__/
 dataset/nuScenes/__pycache__/
 dataset/preprocess/__pycache__/
 dataset/semantic_kitti/__pycache__/
+*.pyc
+*core.*
+__pycache__/
