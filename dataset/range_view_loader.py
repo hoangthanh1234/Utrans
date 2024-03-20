@@ -129,8 +129,25 @@ class RangeViewLoader(Dataset):
         proj_feature_tensor = (proj_feature_tensor - self.proj_img_mean[:, None, None]) / self.proj_img_stds[:, None, None]
         proj_feature_tensor = proj_feature_tensor * proj_mask_tensor.unsqueeze(0).float()
 
-        print(proj_feature_tensor[:1].shape)
+        
+        image_print = proj_feature_tensor[:1]
+        
+        img = torch.squeeze(image_print, dim=0) 
+        print(img.shape)
+        from torchvision.utils import save_image
+        import matplotlib.pyplot as plt
+        img = img.detach().cpu().numpy()
+        plt.imshow(img, cmap='coolwarm')
 
+        # Remove axes and labels (optional)
+        plt.axis('off')
+
+        # Display the image
+        plt.show()
+       
+        # Save the image to a file
+        #img.save('single_row_image.png')
+       
         proj_tensor = torch.cat( #[7,32,2048]
             (proj_feature_tensor, #[5,32,2048]
             proj_sem_label_tensor.unsqueeze(0), #[1,32,2048]
