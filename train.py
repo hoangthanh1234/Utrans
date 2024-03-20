@@ -453,9 +453,7 @@ class Trainer(object):
             t_process_start = time.time()
 
             # 2D inputs
-            input_feature = batch_dict['input2d'].cuda(non_blocking=True)
-            #range_image = input_feature[:,0,0,0,0]
-            print("Range_image: ", input_feature.shape)
+            input_feature = batch_dict['input2d'].cuda(non_blocking=True)            
             assert self.settings.in_channels == 5
 
             # 3D inputs

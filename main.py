@@ -128,7 +128,7 @@ class Experiment(object):
 
 
         if self.recorder is not None:
-            #self.recorder.logger.info(f'model = {model}')
+            self.recorder.logger.info(f'model = {model}')
 
             stats = model.counter_model_parameters()
             if hasattr(model, 'counter_model_parameters'):
@@ -146,36 +146,35 @@ class Experiment(object):
                 raise FileNotFoundError('checkpoint file not found: {}'.format(self.settings.checkpoint))
 
             checkpoint_data = torch.load(self.settings.checkpoint, map_location='cpu')
+            if self.settings.finetune_pretrained_model:
+                # When fine-tuning a segmentation model previously pre-trained to another dataset then it
+                # is necessary to adapt the (a) pos_embeds and (b) to remove the classification head.
+                image_size = self.model.rangevit.encoder.image_size
+               
+                patch_stride = self.model.rangevit.encoder.patch_stride
+                if (self.model.rangevit.encoder.pos_embed.shape != checkpoint_data['model']['rangevit.encoder.pos_embed'].shape):
+                    assert self.model.rangevit.encoder.pos_embed.shape[2] == checkpoint_data['model']['rangevit.encoder.pos_embed'].shape[2]
+                    gs_new_h = int(image_size[0] // patch_stride[0])
+                    gs_new_w = int(image_size[1] // patch_stride[1])
+                    num_extra_tokens = 1
+                    assert (gs_new_h * gs_new_w + num_extra_tokens) == self.model.rangevit.encoder.pos_embed.shape[1]
+                    old_len = checkpoint_data['model']['rangevit.encoder.pos_embed'].shape[1] - num_extra_tokens # remove one for the classification token
 
-            # if self.settings.finetune_pretrained_model:
-            #     # When fine-tuning a segmentation model previously pre-trained to another dataset then it
-            #     # is necessary to adapt the (a) pos_embeds and (b) to remove the classification head.
-            #     image_size = self.model.rangevit.encoder.image_size
-            #     print("=========image=================")
-            #     patch_stride = self.model.rangevit.encoder.patch_stride
-            #     if (self.model.rangevit.encoder.pos_embed.shape != checkpoint_data['model']['rangevit.encoder.pos_embed'].shape):
-            #         assert self.model.rangevit.encoder.pos_embed.shape[2] == checkpoint_data['model']['rangevit.encoder.pos_embed'].shape[2]
-            #         gs_new_h = int(image_size[0] // patch_stride[0])
-            #         gs_new_w = int(image_size[1] // patch_stride[1])
-            #         num_extra_tokens = 1
-            #         assert (gs_new_h * gs_new_w + num_extra_tokens) == self.model.rangevit.encoder.pos_embed.shape[1]
-            #         old_len = checkpoint_data['model']['rangevit.encoder.pos_embed'].shape[1] - num_extra_tokens # remove one for the classification token
+                    gs_old_w = gs_new_w
+                    gs_old_h = old_len // gs_old_w
+                    checkpoint_data['model']['rangevit.encoder.pos_embed'] = (
+                        resize_pos_embed(checkpoint_data['model']['rangevit.encoder.pos_embed'],
+                                         grid_old_shape=(gs_old_h, gs_old_w),
+                                         grid_new_shape=(gs_new_h, gs_new_w),
+                                         num_extra_tokens=num_extra_tokens))
+                assert self.model.rangevit.encoder.pos_embed.shape == checkpoint_data['model']['rangevit.encoder.pos_embed'].shape
 
-            #         gs_old_w = gs_new_w
-            #         gs_old_h = old_len // gs_old_w
-            #         checkpoint_data['model']['rangevit.encoder.pos_embed'] = (
-            #             resize_pos_embed(checkpoint_data['model']['rangevit.encoder.pos_embed'],
-            #                              grid_old_shape=(gs_old_h, gs_old_w),
-            #                              grid_new_shape=(gs_new_h, gs_new_w),
-            #                              num_extra_tokens=num_extra_tokens))
-            #     assert self.model.rangevit.encoder.pos_embed.shape == checkpoint_data['model']['rangevit.encoder.pos_embed'].shape
+                for key in ('rangevit.kpclassifier.head.weight', 'rangevit.kpclassifier.head.bias'):
+                    del checkpoint_data['model'][key]
 
-            #     for key in ('rangevit.kpclassifier.head.weight', 'rangevit.kpclassifier.head.bias'):
-            #         del checkpoint_data['model'][key]
-
-            #checkpoint_data_model = checkpoint_data['model']
-            #msg = self.model.load_state_dict(checkpoint_data_model, strict=(not self.settings.finetune_pretrained_model))
-            #print(f'msg = {msg}')
+            checkpoint_data_model = checkpoint_data['model']
+            msg = self.model.load_state_dict(checkpoint_data_model, strict=(not self.settings.finetune_pretrained_model))
+            print(f'msg = {msg}')
 
             if not self.settings.finetune_pretrained_model:
                 print(f'==> Loading optimizer')
