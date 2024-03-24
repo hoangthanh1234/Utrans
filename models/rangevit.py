@@ -265,27 +265,10 @@ class RangeViT(nn.Module):
             dropout = 0.0
             drop_path_rate = 0.1
             d_model = 384
-        elif backbone == 'vit_base_patch16_384':
-            n_heads = 12
-            n_layers = 12
-            patch_size = 16
-            dropout = 0.0
-            drop_path_rate = 0.1
-            d_model = 768
-        elif backbone == 'vit_large_patch16_384':
-            n_heads = 16
-            n_layers = 24
-            patch_size = 16
-            dropout = 0.0
-            drop_path_rate = 0.1
-            d_model = 1024
         else:
             raise NameError('Not known ViT backbone.')
 
-        # Decoder config
-        if decoder == 'linear':
-            decoder_cfg = {'n_cls': n_cls, 'name': 'linear'}
-        elif decoder == 'up_conv':
+        if decoder == 'up_conv':
             decoder_cfg = {
                 'n_cls': n_cls, 'name': 'up_conv',
                 'd_decoder': up_conv_d_decoder, # hidden dim of the decoder
