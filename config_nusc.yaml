@@ -45,7 +45,7 @@ checkpoint: null
 pretrained_model: '/path_to_pretrained_model/model.pth'
 
 # Loading pre-trained patch and positional embeddings
-reuse_pos_emb: true
+reuse_pos_emb: false
 reuse_patch_emb: false # no patch embedding as a convolutional stem (ConvStem) is used
 
 
