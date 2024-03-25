@@ -160,10 +160,7 @@ def create_decoder(encoder, decoder_cfg):
     decoder_cfg['d_encoder'] = encoder.d_model
     decoder_cfg['patch_size'] = encoder.patch_size
 
-    if name == 'linear':
-        decoder_cfg['patch_stride'] = encoder.patch_stride
-        decoder = DecoderLinear(**decoder_cfg)
-    elif name == 'up_conv':
+    if name == 'up_conv':
         decoder_cfg['patch_stride'] = encoder.patch_stride
         decoder = DecoderUpConv(**decoder_cfg)
     else:
@@ -189,48 +186,6 @@ def create_rangevit(model_cfg, use_kpconv=False):
         model = RangeViT_noKPConv(encoder, decoder, n_cls=model_cfg['n_cls'])
 
     return model
-
-
-class RangeViT_noKPConv(nn.Module):
-    def __init__(
-        self,
-        encoder,
-        decoder,
-        n_cls,
-    ):
-        super().__init__()
-        self.n_cls = n_cls
-        self.patch_size = encoder.patch_size
-        self.patch_stride = encoder.patch_stride
-        self.encoder = encoder
-        self.decoder = decoder
-
-    @torch.jit.ignore
-    def no_weight_decay(self):
-        def append_prefix_no_weight_decay(prefix, module):
-            return set(map(lambda x: prefix + x, module.no_weight_decay()))
-
-        nwd_params = append_prefix_no_weight_decay('encoder.', self.encoder).union(
-            append_prefix_no_weight_decay('decoder.', self.decoder)
-        )
-        return nwd_params
-
-    def forward(self, im):
-        H_ori, W_ori = im.size(2), im.size(3)
-        im = padding(im, self.patch_size)
-        H, W = im.size(2), im.size(3)
-
-        x, skip = self.encoder(im, return_features=True) # x.shape = [16, 577, 384]
-
-        # remove CLS tokens for decoding
-        num_extra_tokens = 1
-        x = x[:, num_extra_tokens:] # x.shape = [16, 576, 384]
-
-        feats = self.decoder(x, (H, W), skip) # feats.shape = [16, 17, 24, 24]
-        feats = F.interpolate(feats, size=(H, W), mode='bilinear')
-        feats = unpadding(feats, (H_ori, W_ori)) # feats.shape = [16, 17, 384, 384]
-
-        return feats
 
 
 class RangeViT(nn.Module):
@@ -264,11 +219,14 @@ class RangeViT(nn.Module):
             patch_size = 16
             dropout = 0.0
             drop_path_rate = 0.1
-            d_model = 384
+            d_model = 384        
         else:
             raise NameError('Not known ViT backbone.')
 
-        if decoder == 'up_conv':
+        # Decoder config
+        if decoder == 'linear':
+            decoder_cfg = {'n_cls': n_cls, 'name': 'linear'}
+        elif decoder == 'up_conv':
             decoder_cfg = {
                 'n_cls': n_cls, 'name': 'up_conv',
                 'd_decoder': up_conv_d_decoder, # hidden dim of the decoder
@@ -298,57 +256,20 @@ class RangeViT(nn.Module):
 
         # Create RangeViT model
         self.rangevit = create_rangevit(net_kwargs, use_kpconv)
-
-        old_state_dict = self.rangevit.state_dict()
+        
+        old_state_dict = self.rangevit.state_dict() #have value
+        # for k in old_state_dict.keys():
+        #     print(k)
+        
 
         # Loading pre-trained weights in the ViT encoder
         if pretrained_path is not None:
-            print(f'Loading pretrained parameters from {pretrained_path}')
-            if pretrained_path == 'timmImageNet21k':
-                vit_imagenet = timm.create_model(backbone, pretrained=True) #.cuda()
-                pretrained_state_dict = vit_imagenet.state_dict() # nb keys: 152
-                all_keys = list(pretrained_state_dict.keys())
-                for key in all_keys:
-                    pretrained_state_dict['encoder.'+key] = pretrained_state_dict.pop(key)
-            else:
-                pretrained_state_dict = torch.load(pretrained_path, map_location='cpu')
-                if 'model' in pretrained_state_dict:
-                    pretrained_state_dict = pretrained_state_dict['model']
-                elif 'pos_embed' in pretrained_state_dict.keys():
-                    all_keys = list(pretrained_state_dict.keys())
-                    for key in all_keys:
-                        pretrained_state_dict['encoder.'+key] = pretrained_state_dict.pop(key)
-
-            # Reuse pre-trained positional embeddings
-            if reuse_pos_emb:
-                # Resize the existing position embeddings to the desired size
-                print('Reusing positional embeddings.')
-                gs_new_h = int((image_size[0] - new_patch_size[0]) // new_patch_stride[0] + 1)
-                gs_new_w = int((image_size[1] - new_patch_size[1]) // new_patch_stride[1] + 1)
-                num_extra_tokens = 1
-                resized_pos_emb = resize_pos_embed(pretrained_state_dict['encoder.pos_embed'],
-                                                   grid_old_shape=None,
-                                                   grid_new_shape=(gs_new_h, gs_new_w),
-                                                   num_extra_tokens=num_extra_tokens)
-                pretrained_state_dict['encoder.pos_embed'] = resized_pos_emb
-            else:
-                del pretrained_state_dict['encoder.pos_embed'] # remove positional embeddings
-
-            # Reuse pre-trained patch embeddings
-            if reuse_patch_emb:
-                assert conv_stem=='none' # no patch embedding if a convolutional stem is used
-                print('Reusing patch embeddings.')
-
-                assert old_state_dict['encoder.patch_embed.proj.bias'].shape == pretrained_state_dict['encoder.patch_embed.proj.bias'].shape
-                old_state_dict['encoder.patch_embed.proj.bias'] = pretrained_state_dict['encoder.patch_embed.proj.bias']
-
-                _, _, gs_new_h, gs_new_w = old_state_dict['encoder.patch_embed.proj.weight'].shape
-                reshaped_weight = adapt_input_conv(in_channels, pretrained_state_dict['encoder.patch_embed.proj.weight'])
-                reshaped_weight = F.interpolate(reshaped_weight, size=(gs_new_h, gs_new_w), mode='bilinear')
-                pretrained_state_dict['encoder.patch_embed.proj.weight'] = reshaped_weight
-            else:
-                del pretrained_state_dict['encoder.patch_embed.proj.weight'] # remove patch embedding layers
-                del pretrained_state_dict['encoder.patch_embed.proj.bias'] # remove patch embedding layers
+            pretrained_state_dict = torch.load(pretrained_path, map_location='cpu')
+            pretrained_state_dict = pretrained_state_dict['model']
+              
+            del pretrained_state_dict['encoder.pos_embed'] # remove positional embeddings
+            del pretrained_state_dict['encoder.patch_embed.proj.weight'] # remove patch embedding layers
+            del pretrained_state_dict['encoder.patch_embed.proj.bias'] # remove patch embedding layers
 
             # Delete the pre-trained weights of the decoder
             decoder_keys = []
@@ -358,8 +279,8 @@ class RangeViT(nn.Module):
             for decoder_key in decoder_keys:
                 del pretrained_state_dict[decoder_key]
 
-            msg = self.rangevit.load_state_dict(pretrained_state_dict, strict=False)
-            print(f'{msg}')
+            msg = self.rangevit.load_state_dict(pretrained_state_dict, strict=False) #don't show comment load to rangeVit
+            #print(f'{msg}') #print the removed layers
 
     def counter_model_parameters(self):
         stats = {}
@@ -386,5 +307,3 @@ if __name__ == '__main__':
                      reuse_pos_emb=True)
 
     predictions = model(x)
-    
-    #print("predictions: ")
