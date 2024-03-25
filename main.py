@@ -45,7 +45,8 @@ def build_rangevit_model(settings, pretrained_path=None):
         decoder=settings.decoder,
         up_conv_d_decoder=settings.D_h,
         up_conv_scale_factor=settings.patch_stride,
-        use_kpconv=settings.use_kpconv)   
+        use_kpconv=settings.use_kpconv) 
+    print (model)  
     return model
 
 
@@ -54,8 +55,6 @@ class Experiment(object):
         self.settings = settings
         # Init gpu
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        #print("device: ", device)
-
         self.settings.check_path()
 
         # Set random seed
@@ -67,69 +66,27 @@ class Experiment(object):
 
         # Init checkpoint
         self.recorder = None 
-        if tools.is_main_process(): 
-            self.recorder = utils.tools.Recorder(self.settings, self.settings.save_path)
+        #if tools.is_main_process(): 
+            #self.recorder = utils.tools.Recorder(self.settings, self.settings.save_path)
 
         self.prediction_path = os.path.join(self.settings.save_path, 'preds') 
-
         self.epoch_start = 0 
 
         # Init model
         self.model = self._initModel()
-
+        print(self.model)
         # Init trainer
-        self.trainer = Trainer(self.settings, self.model, self.recorder) 
-
+        #self.trainer = Trainer(self.settings, self.model, self.recorder) 
         # Load checkpoint
-        self._loadCheckpoint() 
+        #self._loadCheckpoint() 
 
 
     def _initModel(self):
         # Model
-        model = build_rangevit_model(
-            self.settings,
-            pretrained_path=self.settings.pretrained_model)
-
-        # Freezing the ViT encoder weights.
-        # if self.settings.freeze_vit_encoder:
-        #     print('==> Freeze the ViT encoder (without the pos_embed and stem)')
-        #     for param in model.rangevit.encoder.blocks.parameters():
-        #         param.requires_grad = False
-
-        #     model.rangevit.encoder.norm.weight.requires_grad = False
-        #     model.rangevit.encoder.norm.bias.requires_grad = False
-
-            # Unfreeze the LayerNorm layers
-            # if self.settings.unfreeze_layernorm:
-            #     print('==> Unfreeze the LN layers')
-            #     model.rangevit.encoder.norm.weight.requires_grad = True
-            #     model.rangevit.encoder.norm.bias.requires_grad = True
-            #     for block_id in range(0, len(model.rangevit.encoder.blocks)):
-            #         model.rangevit.encoder.blocks[block_id].norm1.weight.requires_grad = True
-            #         model.rangevit.encoder.blocks[block_id].norm1.bias.requires_grad = True
-            #         model.rangevit.encoder.blocks[block_id].norm2.weight.requires_grad = True
-            #         model.rangevit.encoder.blocks[block_id].norm2.bias.requires_grad = True
-
-            # if self.settings.unfreeze_attn:
-            #     print('==> Unfreeze the ATTN layers: qkv and proj')
-            #     for block_id in range(0, len(model.rangevit.encoder.blocks)):
-            #         model.rangevit.encoder.blocks[block_id].attn.qkv.weight.requires_grad = True
-            #         model.rangevit.encoder.blocks[block_id].attn.qkv.bias.requires_grad = True
-            #         model.rangevit.encoder.blocks[block_id].attn.proj.weight.requires_grad = True
-            #         model.rangevit.encoder.blocks[block_id].attn.proj.bias.requires_grad = True
-
-            # if self.settings.unfreeze_ffn:
-            #     print('==> Unfreeze the FFN layers: mlp.fc1 and mlp.fc2')
-            #     for block_id in range(0, len(model.rangevit.encoder.blocks)):
-            #         model.rangevit.encoder.blocks[block_id].mlp.fc1.weight.requires_grad = True
-            #         model.rangevit.encoder.blocks[block_id].mlp.fc1.bias.requires_grad = True
-            #         model.rangevit.encoder.blocks[block_id].mlp.fc2.weight.requires_grad = True
-            #         model.rangevit.encoder.blocks[block_id].mlp.fc2.bias.requires_grad = True
-
+        model = build_rangevit_model(self.settings,pretrained_path=self.settings.pretrained_model)
 
         if self.recorder is not None:
             #self.recorder.logger.info(f'model = {model}')
-
             stats = model.counter_model_parameters()
             if hasattr(model, 'counter_model_parameters'):
                 self.recorder.logger.info(f'Number of model parameters:')
@@ -203,11 +160,8 @@ class Experiment(object):
         best_val_result = None       
 
         for epoch in range(self.epoch_start, self.settings.n_epochs):
-
             # Run one epoch
             self.trainer.run(epoch, mode='Train')
-            
-
             # Run validation
             if (epoch % self.settings.val_frequency == 0 or
                 epoch == self.settings.n_epochs - 1 or
@@ -329,4 +283,4 @@ if __name__ == '__main__':
         settings.save_path = os.path.join(settings.save_path, f'Eval_{settings.id}')
 
     exp = Experiment(settings)
-    exp.run()
+    #exp.run()

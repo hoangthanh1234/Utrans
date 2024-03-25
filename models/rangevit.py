@@ -146,6 +146,7 @@ def create_decoder(encoder, decoder_cfg):
         decoder = DecoderUpConv(**decoder_cfg)
     else:
         raise ValueError(f'Unknown decoder: {name}')
+    #print("decoder: ",decoder)    
     return decoder
 
 
@@ -155,6 +156,7 @@ def create_rangevit(model_cfg, use_kpconv=False):
     decoder_cfg['n_cls'] = model_cfg['n_cls']
 
     encoder = create_vit(model_cfg)
+   
     decoder = create_decoder(encoder, decoder_cfg)
 
   
@@ -270,13 +272,3 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-if __name__ == '__main__':
-    model = RangeViT(in_channels=5,
-                     n_cls=17,
-                     backbone='vit_small_patch16_384',
-                     decoder='linear',
-                     image_size=(32, 384),
-                     pretrained_path='/root/checkpoint.pth',
-                     reuse_pos_emb=True)
-
-    predictions = model(x)

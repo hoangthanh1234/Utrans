@@ -80,8 +80,8 @@ augmentation:
 sensor:
   name: 'HDL64'
   type: 'spherical'
-  proj_h: 32 #384
-  proj_w: 2048
+  proj_h: 512 #384
+  proj_w: 1024
   fov_up: 10.
   fov_down: -30.
   fov_left: -180
