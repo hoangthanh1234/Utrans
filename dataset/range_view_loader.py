@@ -133,17 +133,17 @@ class RangeViewLoader(Dataset):
         image_print = proj_feature_tensor[:1]
         
         img = torch.squeeze(image_print, dim=0) 
-        print(img.shape)
-        from torchvision.utils import save_image
-        import matplotlib.pyplot as plt
-        img = img.detach().cpu().numpy()
-        plt.imshow(img, cmap='coolwarm')
+        #print(img.shape)
+        # from torchvision.utils import save_image
+        # import matplotlib.pyplot as plt
+        # img = img.detach().cpu().numpy()
+        # plt.imshow(img, cmap='coolwarm')
 
         # Remove axes and labels (optional)
-        plt.axis('off')
+        #plt.axis('off')
 
         # Display the image
-        plt.show()
+        #plt.show()
        
         # Save the image to a file
         #img.save('single_row_image.png')

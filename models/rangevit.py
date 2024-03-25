@@ -49,24 +49,16 @@ class VisionTransformer(nn.Module):
 
         self.conv_stem = conv_stem
 
-        if self.conv_stem == 'none':
-            self.patch_embed = PatchEmbedding(
-                image_size,
-                patch_size,
-                patch_stride,
-                d_model,
-                channels,)
-        else:   # in this case self.conv_stem = 'ConvStem'
-            assert patch_stride == patch_size # patch_size = patch_stride if a convolutional stem is used
-
-            self.patch_embed = ConvStem(
-                in_channels=channels,
-                base_channels=stem_base_channels,
-                img_size=image_size,
-                patch_stride=patch_stride,
-                embed_dim=d_model,
-                flatten=True,
-                hidden_dim=stem_hidden_dim)
+        # in this case self.conv_stem = 'ConvStem'
+        assert patch_stride == patch_size # patch_size = patch_stride if a convolutional stem is used       
+        self.patch_embed = ConvStem(
+            in_channels=channels,
+            base_channels=stem_base_channels,
+            img_size=image_size,
+            patch_stride=patch_stride,
+            embed_dim=d_model,
+            flatten=True,
+            hidden_dim=stem_hidden_dim)
 
         self.patch_size = patch_size
         self.PS_H, self.PS_W = patch_size
@@ -86,6 +78,7 @@ class VisionTransformer(nn.Module):
 
         # Transformer blocks
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, n_layers)]
+
         self.blocks = nn.ModuleList(
                 [Block(d_model, n_heads, d_ff, dropout, dpr[i], init_values=ls_init_values) for i in range(n_layers)]
             )
@@ -108,30 +101,18 @@ class VisionTransformer(nn.Module):
         B, _, H, W = im.shape
         x, skip = self.patch_embed(im) # x.shape = [16, 576, 384]
 
-        cls_tokens = self.cls_token.expand(B, -1, -1)
-        x = torch.cat((cls_tokens, x), dim=1) # x.shape = [16, 577, 384]
-
-        pos_embed = self.pos_embed
-        num_extra_tokens = 1
-
-        if x.shape[1] != pos_embed.shape[1]:
-            grid_H, grid_W = self.get_grid_size(H, W)
-            pos_embed = resize_pos_embed(
-                pos_embed,
-                self.patch_embed.grid_size,
-                (grid_H, grid_W),
-                num_extra_tokens,
-            )
-
+        cls_tokens = self.cls_token.expand(B, -1, -1) #[8,1,384]  
+        x = torch.cat((cls_tokens, x), dim=1) # x.shape = [16, 577, 384] or [8,769,384]
+        pos_embed = self.pos_embed #[1,769,384]
+        num_extra_tokens = 1        
         x = x + pos_embed
         x = self.dropout(x)
 
         for blk in self.blocks:
             x = blk(x)
 
-        x = self.norm(x)
-
-        return x, skip  # x.shape = [16, 577, 384]
+        x = self.norm(x) #[8,769,384]        
+        return x, skip  # x.shape = [16, 577, 384] | skip.shape [8,256,32,384]
 
 
 def create_vit(model_cfg):
@@ -176,17 +157,14 @@ def create_rangevit(model_cfg, use_kpconv=False):
     encoder = create_vit(model_cfg)
     decoder = create_decoder(encoder, decoder_cfg)
 
-    if use_kpconv:
-        kpclassifier = KPClassifier(
-            in_channels=decoder_cfg['d_decoder'] ,
-            out_channels=decoder_cfg['d_decoder'],
-            num_classes=model_cfg['n_cls'])
-        model = RangeViT_KPConv(encoder, decoder, kpclassifier, n_cls=model_cfg['n_cls'])
-    else:
-        model = RangeViT_noKPConv(encoder, decoder, n_cls=model_cfg['n_cls'])
-
+  
+    kpclassifier = KPClassifier(
+        in_channels=decoder_cfg['d_decoder'] ,
+        out_channels=decoder_cfg['d_decoder'],
+        num_classes=model_cfg['n_cls'])
+    model = RangeViT_KPConv(encoder, decoder, kpclassifier, n_cls=model_cfg['n_cls'])
+   
     return model
-
 
 class RangeViT(nn.Module):
     def __init__(
@@ -224,9 +202,7 @@ class RangeViT(nn.Module):
             raise NameError('Not known ViT backbone.')
 
         # Decoder config
-        if decoder == 'linear':
-            decoder_cfg = {'n_cls': n_cls, 'name': 'linear'}
-        elif decoder == 'up_conv':
+        if decoder == 'up_conv':
             decoder_cfg = {
                 'n_cls': n_cls, 'name': 'up_conv',
                 'd_decoder': up_conv_d_decoder, # hidden dim of the decoder
@@ -253,13 +229,10 @@ class RangeViT(nn.Module):
             'stem_hidden_dim': stem_hidden_dim,
         }
 
-
         # Create RangeViT model
         self.rangevit = create_rangevit(net_kwargs, use_kpconv)
         
         old_state_dict = self.rangevit.state_dict() #have value
-        # for k in old_state_dict.keys():
-        #     print(k)
         
 
         # Loading pre-trained weights in the ViT encoder

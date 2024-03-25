@@ -128,7 +128,7 @@ class Experiment(object):
 
 
         if self.recorder is not None:
-            self.recorder.logger.info(f'model = {model}')
+            #self.recorder.logger.info(f'model = {model}')
 
             stats = model.counter_model_parameters()
             if hasattr(model, 'counter_model_parameters'):
