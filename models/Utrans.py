@@ -4,17 +4,17 @@ import torch.nn.functional as F
 from option import Option
 import argparse
 import os
-from blocks import Block
+from .blocks import Block
 
 import torch.nn.functional as F
 import copy
 import timm
 from timm.models.layers import trunc_normal_
 
-from model_utils import get_grid_size_1d, get_grid_size_2d
-from utrans_encoder import Utrans_encoder
-from utrans_kpconv import Utrans_KPConv, KPClassifier
-from utrans_decode import DecoderLinear, DecoderUpConv
+from .model_utils import get_grid_size_1d, get_grid_size_2d
+from .utrans_encoder import Utrans_encoder
+from .utrans_kpconv import Utrans_KPConv, KPClassifier
+from .utrans_decoder import DecoderUpConv
 
 class VisionTransformer(nn.Module):
     def __init__(
@@ -84,17 +84,19 @@ class VisionTransformer(nn.Module):
     def forward(self, im, return_features=False):
         B, _, H, W = im.shape
         encoder_information = self.patch_embed(im) # encoder_information is a dictionary as follow  results = {"shortcut1","shortcut2","shortcut3","shortcut4","node1","node2":node_2,"node3":node_3,"node4","node_1_pool","node_2_pool","node_3_pool","node_4_pool","x_proj","x_latten"}
-        x = encoder_information['x_latten'] 
+        x = encoder_information['x_latten']         
         cls_tokens = self.cls_token.expand(B, -1, -1) #[8,1,384]  
         x = torch.cat((cls_tokens, x), dim=1) #[8,33,384]        
         pos_embed = self.pos_embed #[1,769,384]       
-        num_extra_tokens = 1        
+        num_extra_tokens = 1  
+          
+         
         x = x + pos_embed
         x = self.dropout(x)       
         for blk in self.blocks:
             x = blk(x)
         x = self.norm(x) #[8,32,384]               
-        return x, results
+        return x, encoder_information
 
 def create_vit(model_cfg):
     model_cfg = model_cfg.copy()
@@ -120,12 +122,14 @@ def create_decoder(encoder, decoder_cfg):
     name = decoder_cfg.pop('name')
     decoder_cfg['d_encoder'] = encoder.d_model
     decoder_cfg['patch_size'] = encoder.patch_size
-
+    #print("encoder.d_model: ", encoder.d_model) #384
+    #print("encoder.patch_size: ", encoder.patch_size) #[2,8]
     if name == 'up_conv':
         decoder_cfg['patch_stride'] = encoder.patch_stride
         decoder = DecoderUpConv(**decoder_cfg)
     else:
         raise ValueError(f'Unknown decoder: {name}')
+    #print("decoder: ", decoder)
     return decoder
 
 def create_utrans(model_cfg, use_kpconv=False):
@@ -143,10 +147,11 @@ def create_utrans(model_cfg, use_kpconv=False):
         in_channels=decoder_cfg['d_decoder'] ,
         out_channels=decoder_cfg['d_decoder'],
         num_classes=model_cfg['n_cls'])
-        
+
+
     model = Utrans_KPConv(encoder, decoder, kpclassifier, n_cls=model_cfg['n_cls'])
 
-    print(model)
+    #print(model)
     return model
 
 class Utrans(nn.Module):
@@ -292,7 +297,7 @@ if __name__ == '__main__':
         use_kpconv=settings.use_kpconv) 
 
     image = torch.randn(8,5, 512, 1024)
-    print(model)
+    #print(model)
     model(image,2,3,4,4,5)
 
 

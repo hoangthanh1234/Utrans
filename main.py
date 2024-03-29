@@ -26,9 +26,11 @@ import utils
 import utils.tools as tools
 from models.model_utils import resize_pos_embed
 
+from models.Utrans import Utrans
+
 
 def build_rangevit_model(settings, pretrained_path=None):
-    model = models.RangeViT(
+    model = Utrans(
         in_channels=settings.in_channels,
         n_cls=settings.n_classes,
         backbone=settings.vit_backbone,
@@ -46,7 +48,6 @@ def build_rangevit_model(settings, pretrained_path=None):
         up_conv_d_decoder=settings.D_h,
         up_conv_scale_factor=settings.patch_stride,
         use_kpconv=settings.use_kpconv) 
-    print (model)  
     return model
 
 
@@ -74,11 +75,11 @@ class Experiment(object):
 
         # Init model
         self.model = self._initModel()
-        print(self.model)
+        #print(self.model)
         # Init trainer
-        #self.trainer = Trainer(self.settings, self.model, self.recorder) 
+        self.trainer = Trainer(self.settings, self.model, self.recorder) 
         # Load checkpoint
-        #self._loadCheckpoint() 
+        self._loadCheckpoint() 
 
 
     def _initModel(self):
@@ -131,7 +132,7 @@ class Experiment(object):
 
             checkpoint_data_model = checkpoint_data['model']
             msg = self.model.load_state_dict(checkpoint_data_model, strict=(not self.settings.finetune_pretrained_model))
-            print(f'msg = {msg}')
+            #print(f'msg = {msg}')
 
             if not self.settings.finetune_pretrained_model:
                 print(f'==> Loading optimizer')
@@ -283,4 +284,4 @@ if __name__ == '__main__':
         settings.save_path = os.path.join(settings.save_path, f'Eval_{settings.id}')
 
     exp = Experiment(settings)
-    #exp.run()
+    exp.run()

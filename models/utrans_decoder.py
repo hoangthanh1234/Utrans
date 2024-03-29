@@ -17,8 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from einops.layers.torch import Rearrange
-
-from model_utils import get_grid_size_1d, get_grid_size_2d, init_weights
+from .model_utils import get_grid_size_1d, get_grid_size_2d, init_weights
 
 
 
@@ -45,10 +44,12 @@ class UpConvBlock(nn.Module):
         self.scale_factor = scale_factor
 
         if self.scale_factor[0] != self.scale_factor[1]:
+            #print("=====Up 1=====") checked
             upsample_layers = [
                 nn.Conv2d(in_filters, out_filters * self.scale_factor[0] * self.scale_factor[1], kernel_size=(1, 1)),
                 Rearrange('b (c s0 s1) h w -> b c (h s0) (w s1)', s0=self.scale_factor[0], s1=self.scale_factor[1]),]
         else:
+            #print("=====Up 2=====")
             upsample_layers = [
                 nn.Conv2d(in_filters, out_filters * self.scale_factor[0] * self.scale_factor[1], kernel_size=(1, 1)),
                 nn.PixelShuffle(self.scale_factor[0]),]
@@ -62,6 +63,7 @@ class UpConvBlock(nn.Module):
             nn.LeakyReLU(),
             nn.BatchNorm2d(out_filters)
         )
+
         num_filters = out_filters
         output_layers = [
             nn.Conv2d(num_filters, out_filters, kernel_size=(1, 1)),
@@ -70,17 +72,19 @@ class UpConvBlock(nn.Module):
         ]
         if drop_out:
             output_layers.append(nn.Dropout2d(p=dropout_rate))
+            
         self.conv_output = nn.Sequential(*output_layers)
 
     def forward(self, x, skip=None):
         x_up = self.conv_upsample(x) # increase spatial size by a scale factor. B, 2*base_channels, image_size[0], image_size[1]
-
+        print("x_up", x_up.shape)
         if self.skip_filters > 0:
             assert skip is not None
             assert skip.shape[1] == self.skip_filters
             x_up = torch.cat((x_up, skip), dim=1)
 
         x_up_out = self.conv_output(self.conv1(x_up))
+        print('x_up_out',x_up_out.shape)
         return x_up_out
 
 
@@ -120,10 +124,15 @@ class DecoderUpConv(nn.Module):
 
     def forward(self, x, im_size, skip=None, return_features=False):
         H, W = im_size
-        GS_H, GS_W = get_grid_size_2d(H, W, self.patch_size, self.patch_stride)
+        GS_H, GS_W = get_grid_size_2d(16, 32, self.patch_size, self.patch_stride) # importance to resize;;
+        #print("GS_H",GS_H)
         x = rearrange(x, 'b (h w) c -> b c h w', h=GS_H) # B, d_model, image_size[0]/patch_stride[0], image_size[1]/patch_stride[1]
+        print("X: ",x.shape)
         x = self.up_conv_block(x, skip)
+        print("X2: ",x.shape)
         if return_features:
+            print("====1")
             return x
         else:
+            print("====1")
             return self.head(x)

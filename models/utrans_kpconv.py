@@ -17,8 +17,8 @@ import os
 import torch.nn as nn
 import torch.nn.functional as F
 
-from model_utils import padding, unpadding
-from kpconv.blocks import KPConv
+from .model_utils import padding, unpadding
+from .kpconv.blocks import KPConv
 
 
 def resample_grid(predictions, py, px):
@@ -122,13 +122,12 @@ class Utrans_KPConv(nn.Module):
         # remove CLS tokens for decoding
         num_extra_tokens = 1
         x = x[:, num_extra_tokens:] # x.shape = [16, 576, 384]
-        
-        #feats = self.decoder(x, (H, W), skip, return_features=True)
-        #feats = F.interpolate(feats, size=(H, W), mode='bilinear', align_corners=False)
-        #feats = unpadding(feats, (H_ori, W_ori))
-        #return feats
-        return x
-
+        skip = None
+        feats = self.decoder(x, (H, W), skip, return_features=True)
+        feats = F.interpolate(feats, size=(H, W), mode='bilinear', align_corners=False)
+        feats = unpadding(feats, (H_ori, W_ori))
+        return feats
+   
     def forward(self, im, px, py, pxyz, pknn, num_points):
         feats = self.forward_2d_features(im)
         masks3d = self.kpclassifier(feats, px, py, pxyz, pknn, num_points)
