@@ -29,7 +29,7 @@ from models.model_utils import resize_pos_embed
 from models.Utrans import Utrans
 
 
-def build_rangevit_model(settings, pretrained_path=None):
+def build_Utrans_model(settings, pretrained_path=None):
     model = Utrans(
         in_channels=settings.in_channels,
         n_cls=settings.n_classes,
@@ -67,8 +67,8 @@ class Experiment(object):
 
         # Init checkpoint
         self.recorder = None 
-        #if tools.is_main_process(): 
-            #self.recorder = utils.tools.Recorder(self.settings, self.settings.save_path)
+        if tools.is_main_process(): 
+            self.recorder = utils.tools.Recorder(self.settings, self.settings.save_path)
 
         self.prediction_path = os.path.join(self.settings.save_path, 'preds') 
         self.epoch_start = 0 
@@ -84,10 +84,10 @@ class Experiment(object):
 
     def _initModel(self):
         # Model
-        model = build_rangevit_model(self.settings,pretrained_path=self.settings.pretrained_model)
+        model = build_Utrans_model(self.settings,pretrained_path=self.settings.pretrained_model)
 
         if self.recorder is not None:
-            #self.recorder.logger.info(f'model = {model}')
+            self.recorder.logger.info(f'model = {model}')
             stats = model.counter_model_parameters()
             if hasattr(model, 'counter_model_parameters'):
                 self.recorder.logger.info(f'Number of model parameters:')
@@ -107,32 +107,32 @@ class Experiment(object):
             if self.settings.finetune_pretrained_model:
                 # When fine-tuning a segmentation model previously pre-trained to another dataset then it
                 # is necessary to adapt the (a) pos_embeds and (b) to remove the classification head.
-                image_size = self.model.rangevit.encoder.image_size
+                image_size = self.model.utrans.encoder.image_size
                
-                patch_stride = self.model.rangevit.encoder.patch_stride
-                if (self.model.rangevit.encoder.pos_embed.shape != checkpoint_data['model']['rangevit.encoder.pos_embed'].shape):
-                    assert self.model.rangevit.encoder.pos_embed.shape[2] == checkpoint_data['model']['rangevit.encoder.pos_embed'].shape[2]
+                patch_stride = self.model.utrans.encoder.patch_stride
+                if (self.model.utrans.encoder.pos_embed.shape != checkpoint_data['model']['utrans.encoder.pos_embed'].shape):
+                    assert self.model.utrans.encoder.pos_embed.shape[2] == checkpoint_data['model']['utrans.encoder.pos_embed'].shape[2]
                     gs_new_h = int(image_size[0] // patch_stride[0])
                     gs_new_w = int(image_size[1] // patch_stride[1])
                     num_extra_tokens = 1
-                    assert (gs_new_h * gs_new_w + num_extra_tokens) == self.model.rangevit.encoder.pos_embed.shape[1]
-                    old_len = checkpoint_data['model']['rangevit.encoder.pos_embed'].shape[1] - num_extra_tokens # remove one for the classification token
+                    assert (gs_new_h * gs_new_w + num_extra_tokens) == self.model.utrans.encoder.pos_embed.shape[1]
+                    old_len = checkpoint_data['model']['utrans.encoder.pos_embed'].shape[1] - num_extra_tokens # remove one for the classification token
 
                     gs_old_w = gs_new_w
                     gs_old_h = old_len // gs_old_w
-                    checkpoint_data['model']['rangevit.encoder.pos_embed'] = (
-                        resize_pos_embed(checkpoint_data['model']['rangevit.encoder.pos_embed'],
+                    checkpoint_data['model']['utrans.encoder.pos_embed'] = (
+                        resize_pos_embed(checkpoint_data['model']['utrans.encoder.pos_embed'],
                                          grid_old_shape=(gs_old_h, gs_old_w),
                                          grid_new_shape=(gs_new_h, gs_new_w),
                                          num_extra_tokens=num_extra_tokens))
-                assert self.model.rangevit.encoder.pos_embed.shape == checkpoint_data['model']['rangevit.encoder.pos_embed'].shape
+                assert self.model.utrans.encoder.pos_embed.shape == checkpoint_data['model']['utrans.encoder.pos_embed'].shape
 
-                for key in ('rangevit.kpclassifier.head.weight', 'rangevit.kpclassifier.head.bias'):
+                for key in ('utrans.kpclassifier.head.weight', 'utrans.kpclassifier.head.bias'):
                     del checkpoint_data['model'][key]
 
             checkpoint_data_model = checkpoint_data['model']
             msg = self.model.load_state_dict(checkpoint_data_model, strict=(not self.settings.finetune_pretrained_model))
-            #print(f'msg = {msg}')
+            print(f'msg = {msg}')
 
             if not self.settings.finetune_pretrained_model:
                 print(f'==> Loading optimizer')

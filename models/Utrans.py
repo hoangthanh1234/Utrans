@@ -59,7 +59,7 @@ class VisionTransformer(nn.Module):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
         self.pos_embed = nn.Parameter(
             torch.randn(1, self.patch_embed.num_patches + 1, d_model))       
-       
+        #print("self.patch_embed.num_patche: ",self.patch_embed.num_patches)
 
         # Transformer blocks
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, n_layers)]
@@ -83,19 +83,20 @@ class VisionTransformer(nn.Module):
 
     def forward(self, im, return_features=False):
         B, _, H, W = im.shape
+       
         encoder_information = self.patch_embed(im) # encoder_information is a dictionary as follow  results = {"shortcut1","shortcut2","shortcut3","shortcut4","node1","node2":node_2,"node3":node_3,"node4","node_1_pool","node_2_pool","node_3_pool","node_4_pool","x_proj","x_latten"}
-        x = encoder_information['x_latten']         
+        x = encoder_information['x_latten']    
+      
         cls_tokens = self.cls_token.expand(B, -1, -1) #[8,1,384]  
-        x = torch.cat((cls_tokens, x), dim=1) #[8,33,384]        
-        pos_embed = self.pos_embed #[1,769,384]       
-        num_extra_tokens = 1  
-          
-         
+      
+        x = torch.cat((cls_tokens, x), dim=1) #[8,48,384]             
+        pos_embed = self.pos_embed #               
+        num_extra_tokens = 1            
         x = x + pos_embed
         x = self.dropout(x)       
         for blk in self.blocks:
             x = blk(x)
-        x = self.norm(x) #[8,32,384]               
+        x = self.norm(x)             
         return x, encoder_information
 
 def create_vit(model_cfg):
@@ -218,9 +219,7 @@ class Utrans(nn.Module):
         # Create Utrans model
         self.utrans = create_utrans(net_kwargs, use_kpconv)
         
-        old_state_dict = self.utrans.state_dict() #have value
-        # for k in old_state_dict.keys():
-        #     print("key: ", k)
+        old_state_dict = self.utrans.state_dict() #have value        
          # Loading pre-trained weights in the ViT encoder
         if pretrained_path is not None:
             pretrained_state_dict = torch.load(pretrained_path, map_location='cpu')
@@ -230,8 +229,7 @@ class Utrans(nn.Module):
             del pretrained_state_dict['encoder.patch_embed.proj.weight'] # remove patch embedding layers
             del pretrained_state_dict['encoder.patch_embed.proj.bias'] # remove patch embedding layers
 
-            # for k in pretrained_state_dict.keys():
-            #     print("key: ", k)
+                       
             # Delete the pre-trained weights of the decoder
             decoder_keys = []
             for key in pretrained_state_dict.keys():
@@ -240,66 +238,20 @@ class Utrans(nn.Module):
             for decoder_key in decoder_keys:
                 del pretrained_state_dict[decoder_key]
 
-            msg = self.utrans.load_state_dict(pretrained_state_dict, strict=False) #don't show comment load to rangeVit
-            #print(f'{msg}') #print the removed layers
+            msg = self.utrans.load_state_dict(pretrained_state_dict, strict=False) #don't show comment load to Utrans
+            print(f'{msg}') #print the removed layers
+    def counter_model_parameters(self):
+        stats = {}
+        stats['total_num_parameters'] = count_parameters(self.utrans)
+        stats['decoder_num_parameters'] = count_parameters(self.utrans.decoder)
+        stats['patch_num_parameters'] = count_parameters(self.utrans.encoder.patch_embed)
+        stats['encoder_num_parameters'] = count_parameters(self.utrans.encoder) - stats['patch_num_parameters']
+        return stats
         
     def forward(self, *args):
         return self.utrans(*args)
 
-if __name__ == '__main__':
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    # model = Encoder(in_channels=5, base_channels=32)
-    # print(model)
-    # image = torch.randn(4,5, 1024, 2048)
-    # x_proj, x_latten = model(image)
-
-    parser = argparse.ArgumentParser(description='Experiment Options')
-    parser.add_argument('config_path', type=str, metavar='config_path', help='path of config file, type: string')
-    parser.add_argument('--data_root', type=str, required=True,help='path to the data, type: string')
-    parser.add_argument('--save_path', type=str, required=True, help='path to save the file, type: string')
-    parser.add_argument('--id', type=str,
-                        help='name to identify the run')
-    parser.add_argument('--num_workers', type=int, default=4,
-                        help='number of threads used for data loading, type: int')
-    parser.add_argument('--pretrained_model', type=str,
-                        help='path of pre-trained model to initialize the ViT encoder backbone, type: string')
-    parser.add_argument('--checkpoint', type=str,
-                        help='path of checkpoint model for resuming training or evaluation, type: string')
-    parser.add_argument('--window_stride', type=int,
-                        help='sliding window stride during validation, type: int')
-    parser.add_argument('--mini', action='store_true', help='use mini version of the dataset, type: bool')
-    parser.add_argument('--val_only', action='store_true', help='run inference only')
-    parser.add_argument('--test_split', action='store_true', help='run inference on the test split')
-    parser.add_argument('--save_eval_results', action='store_true', help='save the predictions')
-    parser.add_argument('--log_frequency', type=int, default=100, help='logging frequency')
-    parser.add_argument('--seed', type=int, default=1, help='random seed')
-
-    args = parser.parse_args()
-    settings = Option(args.config_path, args)
-
-    model = Utrans(
-        in_channels=settings.in_channels,
-        n_cls=settings.n_classes,
-        backbone=settings.vit_backbone,
-        image_size=settings.image_size,
-        pretrained_path=args.pretrained_model,
-        new_patch_size=settings.patch_size,
-        new_patch_stride=settings.patch_stride,
-        reuse_pos_emb=settings.reuse_pos_emb,
-        reuse_patch_emb=settings.reuse_patch_emb,
-        conv_stem=settings.conv_stem,
-        stem_base_channels=settings.stem_base_channels,
-        stem_hidden_dim=settings.D_h,
-        skip_filters=settings.skip_filters,
-        decoder=settings.decoder,
-        up_conv_d_decoder=settings.D_h,
-        up_conv_scale_factor=settings.patch_stride,
-        use_kpconv=settings.use_kpconv) 
-
-    image = torch.randn(8,5, 512, 1024)
-    #print(model)
-    model(image,2,3,4,4,5)
-
-
-    
         

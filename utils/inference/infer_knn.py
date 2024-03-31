@@ -25,15 +25,15 @@ import torch.nn.functional as F
 
 import sys
 sys.path.append('../')
-sys.path.append('../rangevit')
+sys.path.append('../UTRANS')
 
 from option import Option
-from main import build_rangevit_model
-from rangevit import dataset
-from rangevit import models
-from rangevit import utils
-from rangevit.utils.tools import Recorder
-from rangevit.utils.metrics.eval_results import eval_results
+from main import build_Utrans_model
+from UTRANS import dataset
+from UTRANS import models
+from UTRANS import utils
+from UTRANS.utils.tools import Recorder
+from UTRANS.utils.metrics.eval_results import eval_results
 from inference_utils import inference
 
 
@@ -108,7 +108,7 @@ class Inference(object):
         sampler = torch.utils.data.DistributedSampler(val_range_loader, shuffle=False)
         val_loader = torch.utils.data.DataLoader(
             val_range_loader,
-            batch_size=1,
+            batch_size=4,
             sampler=sampler,
             num_workers=self.settings.num_workers,
             shuffle=False,
@@ -144,13 +144,13 @@ class Inference(object):
                 # Inference
                 im_meta = dict(flip=False)
                 pred_output = inference(
-                    model_without_ddp.rangevit,
+                    model_without_ddp.Utrans,
                     [input_feature],
                     [im_meta],
                     ori_shape=input_feature.shape[2:4],
                     window_size=self.settings.window_size,
                     window_stride=self.settings.window_stride,
-                    batch_size=1,
+                    batch_size=4,
                     use_kpconv=False)
                 
                 pred_output = pred_output.unsqueeze(0)  # shape: 1 x n_cls x H x W
@@ -287,7 +287,7 @@ class Experiment(object):
                 self.settings, self.settings.save_path, use_tensorboard=False)
 
         # Init model
-        self.model = build_rangevit_model(self.settings, 
+        self.model = build_Utrans_model(self.settings, 
                                           self.settings.pretrained_model)
 
         # Load checkpoint

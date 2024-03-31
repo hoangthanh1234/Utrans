@@ -61,10 +61,10 @@ class Option(object):
         self.in_channels = self.config.get('in_channels', 5)
         self.patch_size = self.config.get('patch_size', [2, 8])
         self.patch_stride = self.config.get('patch_stride', [2, 8])
-        self.image_size = self.config.get('image_size', [32, 384])
-        self.window_size = self.config.get('window_size', [32, 384])
-        self.window_stride = self.config.get('window_stride', [32, 256])
-        self.original_image_size = self.config.get('original_image_size', [32, 2048])
+        self.image_size = self.config.get('image_size', [256, 768])
+        self.window_size = self.config.get('window_size', [256, 768])
+        self.window_stride = self.config.get('window_stride', [256, 768])
+        self.original_image_size = self.config.get('original_image_size', [256, 2048])
 
         # Freeze encoder params
         self.freeze_vit_encoder = self.config.get('freeze_vit_encoder', False)

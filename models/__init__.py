@@ -1,1 +1,1 @@
-from .rangevit import RangeViT
+from .Utrans import Utrans

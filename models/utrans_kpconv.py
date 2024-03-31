@@ -55,7 +55,7 @@ class KPClassifier(nn.Module):
         assert px.shape[0] == num_points.sum().item()
         res = []
         offset = 0
-        batch_size = x.shape[0]
+        batch_size = x.shape[0]        
         for i in range(batch_size):
             len = num_points[i]
             px_i = px[offset:(offset+len)].unsqueeze(0).unsqueeze(1).contiguous()
@@ -111,24 +111,28 @@ class Utrans_KPConv(nn.Module):
         return nwd_params
 
     def forward_2d_features(self, im):
+        #print("Image 1: ", im.shape)
         H_ori, W_ori = im.size(2), im.size(3)
         im = padding(im, self.patch_size)
         H, W = im.size(2), im.size(3)
+        #print("Image 2: ", im.shape)
         
-        
-
-        x, encoder_information = self.encoder(im, return_features=True) # x.shape = [16, 577, 384]
-        
+        x, encoder_infor = self.encoder(im, return_features=True) # x.shape = [16, 577, 384]
+        #print("XXX: ", x.shape)
         # remove CLS tokens for decoding
         num_extra_tokens = 1
         x = x[:, num_extra_tokens:] # x.shape = [16, 576, 384]
+        #print("XXX remove token: ", x.shape)
         skip = None
-        feats = self.decoder(x, (H, W), skip, return_features=True)
+        feats = self.decoder(x, (H, W), skip, return_features=True, encoder_infor=encoder_infor)
+        #print("Feature: : ", feats.shape)
         feats = F.interpolate(feats, size=(H, W), mode='bilinear', align_corners=False)
+        #print("Feature resize: : ", feats.shape)
         feats = unpadding(feats, (H_ori, W_ori))
+        #print("Feature unpadding: : ", feats.shape)
         return feats
    
     def forward(self, im, px, py, pxyz, pknn, num_points):
-        feats = self.forward_2d_features(im)
-        masks3d = self.kpclassifier(feats, px, py, pxyz, pknn, num_points)
+        feats = self.forward_2d_features(im)        
+        masks3d = self.kpclassifier(feats, px, py, pxyz, pknn, num_points)       
         return masks3d

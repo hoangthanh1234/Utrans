@@ -272,7 +272,7 @@ class Trainer(object):
                     im_meta = dict(flip=False)
                     with torch.cuda.amp.autocast(self.fp16_scaler is not None):
                         output_features2d = inference(
-                            model_without_ddp.rangevit,
+                            model_without_ddp.utrans,
                             [input_feature],
                             [im_meta],
                             ori_shape=input_feature.shape[2:4],
@@ -284,7 +284,7 @@ class Trainer(object):
                         output_features2d = output_features2d.unsqueeze(0) # [C, H, W] ==> [1, C, H, W]
 
                         # Apply KPConv layer
-                        output3d = model_without_ddp.rangevit.kpclassifier(
+                        output3d = model_without_ddp.utrans.kpclassifier(
                             output_features2d, px, py, pxyz, knns, num_points)
 
 

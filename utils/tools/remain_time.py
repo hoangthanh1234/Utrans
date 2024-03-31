@@ -11,7 +11,7 @@ class RemainTime(object):
         self.timer_avg = {}
         self.total_iter = {}
     
-    def update(self, cost_time, batch_size=1, mode='Train'):
+    def update(self, cost_time, batch_size=4, mode='Train'):
         if mode not in self.timer_avg.keys():
             self.timer_avg[mode] = RunningAvgMeter()
             self.total_iter[mode] = 0

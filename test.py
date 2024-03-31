@@ -9,12 +9,12 @@ import numpy as np
 #sem_label_raw = np.expand_dims(np.zeros_like(raw_data[:, 0], dtype=int), axis=1)
 #pointcloud = raw_data[:, :4]
 
-image_height = 16  # Assuming an image height of 32 pixels
-image_width = 32   # Assuming an image width of 32 pixels
+image_height = 32  # Assuming an image height of 32 pixels
+image_width = 96  # Assuming an image width of 32 pixels
 
 patch_stride = [2,8]
 
-
+#pdd = nn.AvgPool2d(kernel_size=(3,9), stride=patch_stride, padding=(1,4))
 
 output_height = int(np.ceil(image_height / patch_stride[0]))
 output_width = int(np.ceil(image_width / patch_stride[1]))
