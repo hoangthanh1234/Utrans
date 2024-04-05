@@ -56,7 +56,7 @@ class Utrans_encoder(nn.Module):
         self.num_patches = self.grid_size[0] * self.grid_size[1]
         self.flatten = flatten
         
-        resize_in = [64,160,352,704] #the inputsize for next block in encoder
+        resize_in = [128,288,608,1216] #the inputsize for next block in encoder
 
         self.resize_channel_1 = nn.Sequential(
             nn.Conv2d(resize_in[0],base_channels, kernel_size=(1, 1), stride=1),
@@ -65,19 +65,19 @@ class Utrans_encoder(nn.Module):
         )
 
         self.resize_channel_2 = nn.Sequential(
-            nn.Conv2d(resize_in[1],base_channels, kernel_size=(1, 1), stride=1),
+            nn.Conv2d(resize_in[1],base_channels*2, kernel_size=(1, 1), stride=1),
             nn.LeakyReLU(),
             nn.BatchNorm2d(base_channels*2)
         )
 
         self.resize_channel_3 = nn.Sequential(
-            nn.Conv2d(resize_in[2],base_channels, kernel_size=(1, 1), stride=1),
+            nn.Conv2d(resize_in[2],base_channels*4, kernel_size=(1, 1), stride=1),
             nn.LeakyReLU(),
             nn.BatchNorm2d(base_channels*4)
         )
 
-        self.resize_channel_1 = nn.Sequential(
-            nn.Conv2d(resize_in[3],base_channels, kernel_size=(1, 1), stride=1),
+        self.resize_channel_4 = nn.Sequential(
+            nn.Conv2d(resize_in[3],base_channels*8, kernel_size=(1, 1), stride=1),
             nn.LeakyReLU(),
             nn.BatchNorm2d(base_channels*8)
         )      
@@ -89,8 +89,8 @@ class Utrans_encoder(nn.Module):
     def forward(self, x):
         B, C, H, W = x.shape  # B, in_channels, image_size[0], image_size[1]   
 
-        shortcut1, node_1 = self.node_1(x,previous=None,Node=1) 
-        reChannel_1 = self.resize_channel_1(node_1) 
+        shortcut1, node_1 = self.node_1(x,previous=None,Node=1)       
+        reChannel_1 = self.resize_channel_1(node_1)         
         
         shortcut2, node_2 = self.node_2(reChannel_1,previous=None,Node =2)
         reChannel_2 = self.resize_channel_2(node_2) 
@@ -111,16 +111,16 @@ class Utrans_encoder(nn.Module):
             "skip2":shortcut2,
             "skip3":shortcut3,
             "skip4":shortcut4,
-            "en_block1":reChannel_1,
-            "en_block2":reChannel_2,
-            "en_block3":reChannel_3,
-            "en_block4":reChannel_4,            
+            "en_note1":reChannel_1,
+            "en_note2":reChannel_2,
+            "en_note3":reChannel_3,
+            "en_note4":reChannel_4,            
             "x_proj":x_proj,
             "x_latten":x_latten
          }
        
        
-        print(f"shortcut1 {shortcut1.shape},shortcut2: {shortcut2.shape}, shortcut3: {shortcut3.shape}, shortcut4: {shortcut4.shape}, reChannel_1: {reChannel_1.shape}, reChannel_2: {reChannel_2.shape},reChannel_3: {reChannel_3.shape}, reChannel_4: {reChannel_4.shape}, x_proj: {x_proj.shape}, x_latten: {x_latten.shape}")
+        #print(f"shortcut1 {shortcut1.shape},shortcut2: {shortcut2.shape}, shortcut3: {shortcut3.shape}, shortcut4: {shortcut4.shape}, reChannel_1: {reChannel_1.shape}, reChannel_2: {reChannel_2.shape},reChannel_3: {reChannel_3.shape}, reChannel_4: {reChannel_4.shape}, x_proj: {x_proj.shape}, x_latten: {x_latten.shape}")
         
         return results 
 
@@ -173,8 +173,8 @@ class Encoder_node(nn.Module):
 
 
         resA1 = self.conv3(shortcut_pool)
-        resA1 = self.act3(resA)        
-        resA1 = self.bn3(resA) 
+        resA1 = self.act3(resA1)        
+        resA1 = self.bn3(resA1) 
 
         resA2 = self.conv4(resA1)
         resA2 = self.act4(resA2)
@@ -199,8 +199,6 @@ class Encoder_node(nn.Module):
             else:
                 output = torch.cat((resA1, resA2, resA3, resA4),dim=1)
                
-        output = self.dropout(output)  
-
-        print("OutPut_shape: ", output.shape)
+        output = self.dropout(output)          
 
         return shortcut_pool, output, 

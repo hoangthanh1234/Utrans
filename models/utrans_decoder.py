@@ -113,16 +113,36 @@ class DecoderUpConv(nn.Module):
         self.head = nn.Conv2d(d_decoder, n_cls, kernel_size=(1, 1))
         self.apply(init_weights)
 
-        self.block_1 = Decoder_block(256,256)
-        self.block_2 = Decoder_block(256,128)
-        self.block_3 = Decoder_block(128,128)
-        self.block_4 = Decoder_block(128,256)
+        self.node1 = Decoder_node(256,256)
+        self.node2 = Decoder_node(256,128)
+        self.node3 = Decoder_node(128,128)
+        self.node4 = Decoder_node(128,256)
 
-        resize_in = [512,768,768,832] # the output from block1 to block 4. then resize the change to reduce the weigh of model
-        self.resize_channel_1 = nn.Conv2d(resize_in[0],256, kernel_size=(1, 1), stride=1)
-        self.resize_channel_2 = nn.Conv2d(resize_in[1],128, kernel_size=(1, 1), stride=1)
-        self.resize_channel_3 = nn.Conv2d(resize_in[2],128, kernel_size=(1, 1), stride=1)
-        self.resize_channel_4 = nn.Conv2d(resize_in[3],256, kernel_size=(1, 1), stride=1)
+        resize_in = [1024,1024,1024,1344] # the output from block1 to block 4. then resize the change to reduce the weigh of model
+
+        self.reChannel_1 = nn.Sequential(
+            nn.Conv2d(resize_in[0],256, kernel_size=(1, 1), stride=1),
+            nn.LeakyReLU(),
+            nn.BatchNorm2d(256)
+        )
+
+        self.reChannel_2 = nn.Sequential(
+            nn.Conv2d(resize_in[1],128, kernel_size=(1, 1), stride=1),
+            nn.LeakyReLU(),
+            nn.BatchNorm2d(128)
+        )
+
+        self.reChannel_3 = nn.Sequential(
+            nn.Conv2d(resize_in[2],128, kernel_size=(1, 1), stride=1),
+            nn.LeakyReLU(),
+            nn.BatchNorm2d(128)
+        )
+
+        self.reChannel_4 = nn.Sequential(
+            nn.Conv2d(resize_in[3],256, kernel_size=(1, 1), stride=1),
+            nn.LeakyReLU(),
+            nn.BatchNorm2d(256)
+        )        
 
     @torch.jit.ignore
     def no_weight_decay(self):
@@ -134,30 +154,30 @@ class DecoderUpConv(nn.Module):
         x = rearrange(x, 'b (h w) c -> b c h w', h=GS_H) # B, d_model, image_size[0]/patch_stride[0], image_size[1]/patch_stride[1]
         #Up conv to C=256
         x = self.up_conv_block(x, skip)
-        
+    
         #get the information from encoder 
         skip1 = encoder_infor['skip1']
         skip2 = encoder_infor['skip2']
         skip3 = encoder_infor['skip3']
         skip4 = encoder_infor['skip4']
 
-        en_block1 = encoder_infor['en_block1']
-        en_block2 = encoder_infor['en_block2']
-        en_block3 = encoder_infor['en_block3']
-        en_block4 = encoder_infor['en_block4']
+        en_block1 = encoder_infor['en_note1']
+        en_block2 = encoder_infor['en_note2']
+        en_block3 = encoder_infor['en_note3']
+        en_block4 = encoder_infor['en_note4']       
         
         #implement Encoder Blocks
-        block1 = self.block_1(x, previous = None, Node =1, encode_1=None, encode_2=None)
-        resize_channel_1 = self.resize_channel_1(block1)     
+        note1 = self.node1(x, previous = None, Node =1, encode_1=None, encode_2=None)
+        resize_channel_1 = self.reChannel_1(note1)     
 
-        block2 = self.block_2(resize_channel_1, previous = None, Node =2, encode_1=skip3, encode_2=en_block3)
-        resize_channel_2 = self.resize_channel_2(block2)
+        note2 = self.node2(resize_channel_1, previous = None, Node =2, encode_1=skip3, encode_2=en_block3)
+        resize_channel_2 = self.reChannel_2(note2)
        
-        block3 = self.block_3(resize_channel_2, previous = resize_channel_1, Node =3, encode_1=skip2, encode_2=en_block2)
-        resize_channel_3 = self.resize_channel_3(block3)
+        note3 = self.node3(resize_channel_2, previous = resize_channel_1, Node =3, encode_1=skip2, encode_2=en_block2)
+        resize_channel_3 = self.reChannel_3(note3)
 
-        block4 = self.block_4(resize_channel_3, previous = resize_channel_2, Node =4, encode_1=skip1, encode_2=en_block1)
-        resize_channel_4 = self.resize_channel_4(block4)
+        note4 = self.node4(resize_channel_3, previous = resize_channel_2, Node =4, encode_1=skip1, encode_2=en_block1)
+        resize_channel_4 = self.reChannel_4(note4)
 
         
         if return_features:            
@@ -167,49 +187,80 @@ class DecoderUpConv(nn.Module):
 
 
 
-class Decoder_block(nn.Module):
+class Decoder_node(nn.Module):
     def __init__(self, in_channels, out_channels, dropout_rate=0.1,stride=1,previous=None):
-        super(Decoder_block, self).__init__()
+        super(Decoder_node, self).__init__()
+
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=(1, 1), stride=stride)
         self.act1 = nn.LeakyReLU()
-
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=(3, 3), padding=1)        
-        self.act2 = nn.LeakyReLU()              
         self.bn1 = nn.BatchNorm2d(out_channels)
+
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=(2, 2),dilation=2, padding=1)        
+        self.act2 = nn.LeakyReLU()              
+        self.bn2 = nn.BatchNorm2d(out_channels)
 
         self.conv3 = nn.Conv2d(out_channels, out_channels, kernel_size=(3, 3), dilation=2, padding=2)
         self.act3 = nn.LeakyReLU()       
-        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.bn3 = nn.BatchNorm2d(out_channels)
 
-        self.dropout = nn.Dropout2d(p=dropout_rate)        
+        self.conv4 = nn.Conv2d(out_channels, out_channels, kernel_size=(3, 3), dilation=2, padding=2)
+        self.act4 = nn.LeakyReLU()       
+        self.bn4 = nn.BatchNorm2d(out_channels)
+
+        self.conv5 = nn.Conv2d(out_channels, out_channels, kernel_size=(2, 2), dilation=2, padding=1)
+        self.act5 = nn.LeakyReLU()       
+        self.bn5 = nn.BatchNorm2d(out_channels)
+
+        self.conv6 = nn.Conv2d(out_channels, out_channels, kernel_size=(1, 1), stride=stride)
+        self.act6 = nn.LeakyReLU()
+        self.bn6 = nn.BatchNorm2d(out_channels)    
+
+        self.dropout = nn.Dropout2d(p=dropout_rate)     
 
     def forward(self, x, previous, Node, encode_1, encode_2):       
        
         if Node != 1:
             upsample = F.interpolate(x, scale_factor=2, mode='bilinear')
-            
         else:
-            upsample = x
-        
-        shortcut = self.conv1(upsample)
-        shortcut = self.act1(shortcut)    
-
-        resA = self.conv2(shortcut)
-        resA = self.act2(resA)
-        resA = self.bn1(resA)
+            upsample = x       
        
-        resA1 = self.conv3(resA)
-        resA1 = self.act3(resA1)
-        resA1 = self.bn2(resA1)
+
+        shortcut = self.conv1(upsample)
+        shortcut = self.act1(shortcut) 
+        shortcut = self.bn1(shortcut)
+
+        shortcut = self.conv2(shortcut)
+        shortcut = self.act2(shortcut) 
+        shortcut = self.bn2(shortcut)       
+
+        
+        resA1 = self.conv3(shortcut)        
+        resA1 = self.act3(resA1)        
+        resA1 = self.bn3(resA1) 
+        
+        resA2 = self.conv4(resA1)
+        resA2 = self.act4(resA2)
+        resA2 = self.bn4(resA2)
+
+        resA3 = self.conv5(resA2)
+        resA3 = self.act5(resA3)
+        resA3 = self.bn5(resA3)
+
+        resA3_plus = shortcut + resA3
+
+        resA4 = self.conv6(resA3_plus)
+        resA4 = self.act6(resA4)
+        resA4 = self.bn6(resA4)  
+        
                 
         if Node == 1:
-            output = torch.cat((shortcut,resA1), dim=1)            
-        elif Node == 2:                 
-            output = torch.cat((shortcut,resA1,upsample,encode_1, encode_2), dim=1)                       
-        else:
+            output = torch.cat((resA1, resA2, resA3, resA4), dim=1)            
+        elif Node == 2: 
+            output = torch.cat((resA1, resA2, resA3, resA4, upsample,encode_1, encode_2), dim=1)                       
+        else:            
             previous_up = F.interpolate(previous, scale_factor=4, mode='bilinear')       
-            output = torch.cat((shortcut,resA1,upsample,previous_up, encode_1, encode_1),dim=1)
-       
+            output = torch.cat((resA1, resA2, resA3, resA4, upsample,previous_up, encode_1, encode_1),dim=1)       
+        #output = self.dropout(output)
         return output
        
 

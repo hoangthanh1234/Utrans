@@ -11,9 +11,9 @@ has_label: true
 val_frequency: 10
 n_epochs: 150
 warmup_epochs: 10
-batch_size: 5
+batch_size: 4
 batch_size_val: 1
-lr: 0.0000008 # when using DINO ViT-S/16 encoder as initialization use 0.0002.
+lr: 0.0008 # when using DINO ViT-S/16 encoder as initialization use 0.0002.
 train_result_frequency: 20 # printing frequency of the train results
 
 
@@ -41,7 +41,7 @@ use_kpconv: true
 
 
 # Checkpoint model
-checkpoint: './old_100_epoch_checkpoint.pth'
+checkpoint: null
 pretrained_model: '/path_to_pretrained_model/model.pth'
 
 # Loading pre-trained patch and positional embeddings
