@@ -74,8 +74,7 @@ class Experiment(object):
         self.epoch_start = 0 
 
         # Init model
-        self.model = self._initModel()
-        #print(self.model)
+        self.model = self._initModel()       
         # Init trainer
         self.trainer = Trainer(self.settings, self.model, self.recorder) 
         # Load checkpoint
@@ -139,7 +138,7 @@ class Experiment(object):
                 if self.settings.val_only is False:
                     self.trainer.optimizer.load_state_dict(checkpoint_data['optimizer'])
                 self.epoch_start = checkpoint_data['epoch'] + 1
-
+                print("self.e", self.epoch_start)
                 if ('fp16_scaler' in checkpoint_data) and (checkpoint_data['fp16_scaler'] is not None):
                     self.trainer.fp16_scaler.load_state_dict(checkpoint_data['fp16_scaler'])
 
@@ -163,6 +162,7 @@ class Experiment(object):
         for epoch in range(self.epoch_start, self.settings.n_epochs):
             # Run one epoch
             self.trainer.run(epoch, mode='Train')
+
             # Run validation
             if (epoch % self.settings.val_frequency == 0 or
                 epoch == self.settings.n_epochs - 1 or

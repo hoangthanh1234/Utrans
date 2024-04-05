@@ -161,7 +161,7 @@ class Utrans(nn.Module):
         in_channels=5,
         n_cls=17,
         backbone='vit_small_patch16_384',
-        image_size=(512, 1024),
+        image_size=(256, 768),
         pretrained_path=None,
         new_patch_size=None,
         new_patch_stride=None,
