@@ -17,7 +17,7 @@ class Utrans_encoder(nn.Module):
     def __init__(self,
                  in_channels=5,
                  base_channels=32,
-                 img_size=(16, 48),
+                 img_size=(16, 32),
                  patch_stride=(2, 8),
                  embed_dim=384,
                  flatten=True,
@@ -139,8 +139,6 @@ class Encoder_node(nn.Module):
         self.act2 = nn.LeakyReLU()              
         self.bn2 = nn.BatchNorm2d(out_filters)
 
-
-
         self.conv3 = nn.Conv2d(out_filters, out_filters, kernel_size=(3, 3), dilation=2, padding=2)
         self.act3 = nn.LeakyReLU()       
         self.bn3 = nn.BatchNorm2d(out_filters)
@@ -158,7 +156,9 @@ class Encoder_node(nn.Module):
         self.bn6 = nn.BatchNorm2d(out_filters)
 
        
-        self.dropout = nn.Dropout2d(p=dropout_rate)
+        self.dropout1 = nn.Dropout2d(p=dropout_rate)
+        self.dropout2 = nn.Dropout2d(p=dropout_rate)
+        self.dropout3 = nn.Dropout2d(p=dropout_rate)
                   
 
     def forward(self, x, previous,Node):
@@ -170,7 +170,7 @@ class Encoder_node(nn.Module):
         shortcut = self.act2(shortcut)
         shortcut = self.bn2(shortcut)
         shortcut_pool = self.pool(shortcut)
-
+        shortcut_pool = self.dropout1(shortcut_pool)
 
         resA1 = self.conv3(shortcut_pool)
         resA1 = self.act3(resA1)        
@@ -186,6 +186,8 @@ class Encoder_node(nn.Module):
 
         resA3_plus = shortcut_pool + resA3
 
+        resA3_plus = self.dropout2(resA3_plus)
+
         resA4 = self.conv6(resA3_plus)
         resA4 = self.act6(resA4)
         resA4 = self.bn6(resA4)       
@@ -199,6 +201,6 @@ class Encoder_node(nn.Module):
             else:
                 output = torch.cat((resA1, resA2, resA3, resA4),dim=1)
                
-        output = self.dropout(output)          
+        output = self.dropout3(output)          
 
         return shortcut_pool, output, 

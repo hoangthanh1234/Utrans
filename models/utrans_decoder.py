@@ -93,7 +93,7 @@ class DecoderUpConv(nn.Module):
         scale_factor=(2, 8),
         patch_stride=None,
         dropout_rate=0.2,
-        drop_out=False,
+        drop_out=True,
         skip_filters=0):
         super().__init__()
 
@@ -186,7 +186,6 @@ class DecoderUpConv(nn.Module):
             return self.head(resize_channel_4)
 
 
-
 class Decoder_node(nn.Module):
     def __init__(self, in_channels, out_channels, dropout_rate=0.1,stride=1,previous=None):
         super(Decoder_node, self).__init__()
@@ -215,7 +214,9 @@ class Decoder_node(nn.Module):
         self.act6 = nn.LeakyReLU()
         self.bn6 = nn.BatchNorm2d(out_channels)    
 
-        self.dropout = nn.Dropout2d(p=dropout_rate)     
+        self.dropout1 = nn.Dropout2d(p=dropout_rate)   
+        self.dropout2 = nn.Dropout2d(p=dropout_rate)
+        self.dropout3 = nn.Dropout2d(p=dropout_rate)  
 
     def forward(self, x, previous, Node, encode_1, encode_2):       
        
@@ -233,6 +234,7 @@ class Decoder_node(nn.Module):
         shortcut = self.act2(shortcut) 
         shortcut = self.bn2(shortcut)       
 
+        shortcut = self.dropout1(shortcut)
         
         resA1 = self.conv3(shortcut)        
         resA1 = self.act3(resA1)        
@@ -248,6 +250,8 @@ class Decoder_node(nn.Module):
 
         resA3_plus = shortcut + resA3
 
+        resA3_plus = self.dropout2(resA3_plus)
+
         resA4 = self.conv6(resA3_plus)
         resA4 = self.act6(resA4)
         resA4 = self.bn6(resA4)  
@@ -260,7 +264,7 @@ class Decoder_node(nn.Module):
         else:            
             previous_up = F.interpolate(previous, scale_factor=4, mode='bilinear')       
             output = torch.cat((resA1, resA2, resA3, resA4, upsample,previous_up, encode_1, encode_1),dim=1)       
-        #output = self.dropout(output)
+        output = self.dropout3(output)
         return output
        
 

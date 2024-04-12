@@ -8,13 +8,13 @@ n_classes: 17 # 16 + 1(ignored)
 
 # Train config
 has_label: true
-val_frequency: 10
+val_frequency: 5
 n_epochs: 150
 warmup_epochs: 10
 batch_size: 4
 batch_size_val: 1
 lr: 0.0008 # when using DINO ViT-S/16 encoder as initialization use 0.0002.
-train_result_frequency: 20 # printing frequency of the train results
+train_result_frequency: 10 # printing frequency of the train results
 
 
 # Model config
@@ -22,9 +22,9 @@ vit_backbone: 'vit_small_patch16_384'
 in_channels: 5
 patch_size: [2, 8]  # patch size = patch stride if a convolutional stem (ConvStem) is used
 patch_stride: [2, 8]
-image_size: [256, 768]  # random crop at train
-window_size: [256, 768] # sliding window size
-window_stride: [256, 768] # sliding window stride
+image_size: [256, 512]  # random crop at train
+window_size: [256, 512] # sliding window size
+window_stride: [256, 512] # sliding window stride
 original_image_size: [256, 2048] 
 
 # Stem

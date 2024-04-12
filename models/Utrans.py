@@ -90,8 +90,10 @@ class VisionTransformer(nn.Module):
         cls_tokens = self.cls_token.expand(B, -1, -1) #[8,1,384]  
       
         x = torch.cat((cls_tokens, x), dim=1) #[8,48,384]             
-        pos_embed = self.pos_embed #               
-        num_extra_tokens = 1            
+        pos_embed = self.pos_embed 
+        #print("pos_embed: ", pos_embed.shape)               
+        num_extra_tokens = 1   
+        #print("X: ", x.shape)         
         x = x + pos_embed
         x = self.dropout(x)       
         for blk in self.blocks:
@@ -161,7 +163,7 @@ class Utrans(nn.Module):
         in_channels=5,
         n_cls=17,
         backbone='vit_small_patch16_384',
-        image_size=(256, 768),
+        image_size=(256, 512),
         pretrained_path=None,
         new_patch_size=None,
         new_patch_stride=None,
@@ -184,7 +186,7 @@ class Utrans(nn.Module):
             n_heads = 6
             n_layers = 12
             patch_size = 16
-            dropout = 0.0
+            dropout = 0.1
             drop_path_rate = 0.1
             d_model = 384        
         else:
@@ -239,7 +241,7 @@ class Utrans(nn.Module):
                 del pretrained_state_dict[decoder_key]
 
             msg = self.utrans.load_state_dict(pretrained_state_dict, strict=False) #don't show comment load to Utrans
-            print(f'{msg}') #print the removed layers
+            #print(f'{msg}') #print the removed layers
     def counter_model_parameters(self):
         stats = {}
         stats['total_num_parameters'] = count_parameters(self.utrans)

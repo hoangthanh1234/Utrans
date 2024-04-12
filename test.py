@@ -23,27 +23,7 @@ output_width = int(np.ceil(image_width / patch_stride[1]))
 print(f"Output shape after patch embedding: {(output_height, output_width)}")
 
 
-# (decoder): DecoderUpConv(
-#       (up_conv_block): UpConvBlock(
-#         (conv_upsample): Sequential(
-#           (0): Conv2d(384, 4096, kernel_size=(1, 1), stride=(1, 1))
-#           (1): Rearrange('b (c s0 s1) h w -> b c (h s0) (w s1)', s0=2, s1=8)
-#         )
-#         (conv1): Sequential(
-#           (0): Conv2d(512, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-#           (1): LeakyReLU(negative_slope=0.01)
-#           (2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-#         )
-#         (conv_output): Sequential(
-#           (0): Conv2d(256, 256, kernel_size=(1, 1), stride=(1, 1))
-#           (1): LeakyReLU(negative_slope=0.01)
-#           (2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-#         )
-#       )
-#     )
-#     (kpclassifier): KPClassifier(
-#       (kpconv): KPConv(radius: 0.60, in_feat: 256, out_feat: 256)
-#       (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-#       (relu): ReLU()
-#       (head): Conv2d(256, 17, kernel_size=(1, 1), stride=(1, 1))
-#     )
+import gc
+import torch
+torch.cuda.empty_cache()
+gc.collect()
