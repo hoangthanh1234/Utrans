@@ -96,6 +96,45 @@ class Trainer(object):
             self.cls_weight[0] = 0
             assert self.settings.test_split is False
             self.data_split = 'test' if self.settings.test_split else 'val'
+            
+        elif self.settings.dataset == 'SemanticKitti':
+            data_config_path = 'dataset/semantic_kitti/semantic-kitti.yaml'
+            data_config = yaml.safe_load(open(data_config_path, 'r'))
+
+            if self.settings.use_mini_version:
+                train_sequences = [0]
+            elif self.settings.use_trainval:
+                print('Train with the train+val set.')
+                train_sequences = data_config['split']['train'] + data_config['split']['valid']
+            else:
+                train_sequences = data_config['split']['train']
+
+            trainset = dataset.semantic_kitti.SemanticKitti(
+                root=self.settings.data_root,
+                sequences=train_sequences,
+                config_path=data_config_path)
+
+            self.cls_weight = 1 / (trainset.cls_freq + 1e-3)
+            self.ignore_class = []
+            for cl, _ in enumerate(self.cls_weight):
+                if trainset.data_config['learning_ignore'][cl]:
+                    self.cls_weight[cl] = 0
+                if self.cls_weight[cl] < 1e-10:
+                    self.ignore_class.append(cl)
+            if self.recorder is not None:
+                self.recorder.logger.info('weight: {}'.format(self.cls_weight))
+            self.mapped_cls_name = trainset.mapped_cls_name
+
+            test_sequences = (
+                data_config['split']['test'] if self.settings.test_split else
+                data_config['split']['valid'])
+
+            valset = dataset.semantic_kitti.SemanticKitti(
+                root=self.settings.data_root,
+                sequences=test_sequences,
+                config_path=data_config_path,
+                has_label=(self.settings.test_split is False),
+            )
 
         else:
             raise ValueError(
