@@ -43,7 +43,7 @@ class Utrans_encoder(nn.Module):
         kernel_size = (patch_stride[0] + 1, patch_stride[1] + 1) #(3,9)
         
         padding = (patch_stride[0] // 2, patch_stride[1] // 2) #(1,4)
-        self.pool = nn.AvgPool2d(kernel_size=2, stride=2)
+        self.pool = nn.AvgPool2d(kernel_size=3, stride=2,padding=1)
         
 
         self.proj_block = nn.Sequential(
@@ -129,25 +129,25 @@ class Encoder_node(nn.Module):
     def __init__(self, in_filters, out_filters,dropout_rate=0.1,stride=1,previous=None):
         super(Encoder_node, self).__init__()   
 
-        self.pool = nn.AvgPool2d(kernel_size=2, stride=2)      
+        self.pool = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)      
        
         self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=(1, 1), stride=stride)
         self.act1 = nn.LeakyReLU()
         self.bn1 = nn.BatchNorm2d(out_filters)
 
-        self.conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=(2, 2), padding=1)        
+        self.conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=(3, 3), stride=stride, padding=1)        
         self.act2 = nn.LeakyReLU()              
         self.bn2 = nn.BatchNorm2d(out_filters)
 
-        self.conv3 = nn.Conv2d(out_filters, out_filters, kernel_size=(3, 3), dilation=2, padding=2)
+        self.conv3 = nn.Conv2d(out_filters, out_filters, kernel_size=(3, 3), stride=stride, padding=1)
         self.act3 = nn.LeakyReLU()       
         self.bn3 = nn.BatchNorm2d(out_filters)
 
-        self.conv4 = nn.Conv2d(out_filters, out_filters, kernel_size=(3, 3), dilation=2, padding=2)
+        self.conv4 = nn.Conv2d(out_filters, out_filters, kernel_size=(3, 3), stride=stride, padding=1)
         self.act4 = nn.LeakyReLU()       
         self.bn4 = nn.BatchNorm2d(out_filters)
 
-        self.conv5 = nn.Conv2d(out_filters, out_filters, kernel_size=(2, 2), dilation=2, padding=1)
+        self.conv5 = nn.Conv2d(out_filters, out_filters, kernel_size=(3, 3), stride=stride, padding=1)
         self.act5 = nn.LeakyReLU()       
         self.bn5 = nn.BatchNorm2d(out_filters)
 
@@ -162,13 +162,14 @@ class Encoder_node(nn.Module):
                   
 
     def forward(self, x, previous,Node):
+       
         shortcut = self.conv1(x)
         shortcut = self.act1(shortcut) 
         shortcut = self.bn1(shortcut)
-
         shortcut = self.conv2(shortcut)
         shortcut = self.act2(shortcut)
         shortcut = self.bn2(shortcut)
+       
         shortcut_pool = self.pool(shortcut)
         shortcut_pool = self.dropout1(shortcut_pool)
 
@@ -185,7 +186,6 @@ class Encoder_node(nn.Module):
         resA3 = self.bn5(resA3)
 
         resA3_plus = shortcut_pool + resA3
-
         resA3_plus = self.dropout2(resA3_plus)
 
         resA4 = self.conv6(resA3_plus)
@@ -197,6 +197,8 @@ class Encoder_node(nn.Module):
             output = torch.cat((resA1,resA2,resA3,resA4,self.pool(x),self.pool(self.pool(previous))),dim=1)
         else:
             if Node == 2:
+                print("XXX: ",x.shape)
+                print("self.pool(x): ",self.pool(x).shape)
                 output = torch.cat((resA1, resA2, resA3, resA4, self.pool(x)),dim=1)
             else:
                 output = torch.cat((resA1, resA2, resA3, resA4),dim=1)

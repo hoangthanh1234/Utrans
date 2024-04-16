@@ -113,33 +113,28 @@ class DecoderUpConv(nn.Module):
         self.head = nn.Conv2d(d_decoder, n_cls, kernel_size=(1, 1))
         self.apply(init_weights)
 
-        self.node1 = Decoder_node(256,256)
-        self.node2 = Decoder_node(256,128)
-        self.node3 = Decoder_node(128,128)
-        self.node4 = Decoder_node(128,256)
+        self.node1 = Decoder_node(256,64)
+        self.node2 = Decoder_node(64,128)
+        self.node3 = Decoder_node(32,128)
+        self.node4 = Decoder_node(32,256)
 
-        resize_in = [1024,1024,1024,1344] # the output from block1 to block 4. then resize the change to reduce the weigh of model
-
-        self.reChannel_1 = nn.Sequential(
-            nn.Conv2d(resize_in[0],256, kernel_size=(1, 1), stride=1),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(256)
-        )
+        resize_in = [832,688,1128] # the output from block1 to block 4. then resize the change to reduce the weigh of model
+        
 
         self.reChannel_2 = nn.Sequential(
-            nn.Conv2d(resize_in[1],128, kernel_size=(1, 1), stride=1),
+            nn.Conv2d(resize_in[0],128, kernel_size=(1, 1), stride=1),
             nn.LeakyReLU(),
             nn.BatchNorm2d(128)
         )
 
         self.reChannel_3 = nn.Sequential(
-            nn.Conv2d(resize_in[2],128, kernel_size=(1, 1), stride=1),
+            nn.Conv2d(resize_in[1],128, kernel_size=(1, 1), stride=1),
             nn.LeakyReLU(),
             nn.BatchNorm2d(128)
         )
 
         self.reChannel_4 = nn.Sequential(
-            nn.Conv2d(resize_in[3],256, kernel_size=(1, 1), stride=1),
+            nn.Conv2d(resize_in[2],256, kernel_size=(1, 1), stride=1),
             nn.LeakyReLU(),
             nn.BatchNorm2d(256)
         )        
@@ -168,12 +163,14 @@ class DecoderUpConv(nn.Module):
         
         #implement Encoder Blocks
         note1 = self.node1(x, previous = None, Node =1, encode_1=None, encode_2=None)
-        resize_channel_1 = self.reChannel_1(note1)     
+        print("note1: ",note1.shape)
+        #resize_channel_1 = self.reChannel_1(note1)     
 
-        note2 = self.node2(resize_channel_1, previous = None, Node =2, encode_1=skip3, encode_2=en_block3)
+        note2 = self.node2(note1, previous = None, Node =2, encode_1=skip3, encode_2=en_block3)
+        print("note2: ",note2.shape)
         resize_channel_2 = self.reChannel_2(note2)
        
-        note3 = self.node3(resize_channel_2, previous = resize_channel_1, Node =3, encode_1=skip2, encode_2=en_block2)
+        note3 = self.node3(resize_channel_2, previous = note1, Node =3, encode_1=skip2, encode_2=en_block2)
         resize_channel_3 = self.reChannel_3(note3)
 
         note4 = self.node4(resize_channel_3, previous = resize_channel_2, Node =4, encode_1=skip1, encode_2=en_block1)
@@ -184,6 +181,34 @@ class DecoderUpConv(nn.Module):
             return resize_channel_4 #return feature this case
         else:           
             return self.head(resize_channel_4)
+
+
+class PixelShuffleUp(nn.Module):
+  """
+  A module for upsampling using PixelShuffle.
+  """
+  def __init__(self, upscale_factor):
+    super(PixelShuffleUp, self).__init__()
+    if upscale_factor % 2 != 0:
+      raise ValueError("Upscale factor must be a multiple of 2 for PixelShuffle.")
+    self.upscale_factor = upscale_factor
+
+  def forward(self, x):
+    """
+    Performs upsampling on the input tensor using PixelShuffle.
+
+    Args:
+      x: Input tensor (torch.Tensor) of shape (batch_size, channels, height, width).
+
+    Returns:
+      Upsampled tensor (torch.Tensor) with the spatial resolution increased by the upscale factor.
+    """
+    batch_size, channels, in_height, in_width = x.shape
+    out_channels = channels // (self.upscale_factor * self.upscale_factor)
+    out_height = in_height * self.upscale_factor
+    out_width = in_width * self.upscale_factor
+    return x.view(batch_size, out_channels, self.upscale_factor, self.upscale_factor, in_height, in_width) \
+           .permute(0, 1, 3, 5, 2, 4).contiguous().view(batch_size, out_channels, out_height, out_width)
 
 
 class Decoder_node(nn.Module):
@@ -218,12 +243,17 @@ class Decoder_node(nn.Module):
         self.dropout2 = nn.Dropout2d(p=dropout_rate)
         self.dropout3 = nn.Dropout2d(p=dropout_rate)  
 
+        self.upsample_2 = PixelShuffleUp(2)
+        self.upsample_4 = PixelShuffleUp(4)
+
     def forward(self, x, previous, Node, encode_1, encode_2):       
-       
+        
+        print("X: ", x.shape)
         if Node != 1:
-            upsample = F.interpolate(x, scale_factor=2, mode='bilinear')
+            upsample = self.upsample_2(x)
         else:
-            upsample = x       
+            upsample = x     
+        print("upsample: ", upsample.shape)  
        
 
         shortcut = self.conv1(upsample)
@@ -262,9 +292,10 @@ class Decoder_node(nn.Module):
         elif Node == 2: 
             output = torch.cat((resA1, resA2, resA3, resA4, upsample,encode_1, encode_2), dim=1)                       
         else:            
-            previous_up = F.interpolate(previous, scale_factor=4, mode='bilinear')       
+            previous_up = self.upsample_4(previous)      
             output = torch.cat((resA1, resA2, resA3, resA4, upsample,previous_up, encode_1, encode_1),dim=1)       
         output = self.dropout3(output)
+        print("output: ", output.shape)
         return output
        
 

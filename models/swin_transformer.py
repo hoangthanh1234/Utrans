@@ -12,6 +12,35 @@ class CyclicShift(nn.Module):
     def forward(self, x):
         return torch.roll(x, shifts=(self.displacement, self.displacement), dims=(1, 2))
 
+class SwinBlock(nn.Module):
+    def __init__(self, dim, heads, head_dim, mlp_dim, shifted, window_size, relative_pos_embedding):
+        super().__init__()
+        self.attention_block = Residual(PreNorm(dim, WindowAttention(dim=dim,
+                                                                     heads=heads,
+                                                                     head_dim=head_dim,
+                                                                     shifted=shifted,
+                                                                     window_size=window_size,
+                                                                     relative_pos_embedding=relative_pos_embedding)))
+        self.mlp_block = Residual(PreNorm(dim, FeedForward(dim=dim, hidden_dim=mlp_dim)))
+
+    def forward(self, x):
+        x = self.attention_block(x)
+        x = self.mlp_block(x)
+        return x
+
+class PatchMerging(nn.Module):
+    def __init__(self, in_channels, out_channels, downscaling_factor):
+        super().__init__()
+        self.downscaling_factor = downscaling_factor
+        self.patch_merge = nn.Unfold(kernel_size=downscaling_factor, stride=downscaling_factor, padding=0)
+        self.linear = nn.Linear(in_channels * downscaling_factor ** 2, out_channels)
+
+    def forward(self, x):
+        b, c, h, w = x.shape
+        new_h, new_w = h // self.downscaling_factor, w // self.downscaling_factor
+        x = self.patch_merge(x).view(b, -1, new_h, new_w).permute(0, 2, 3, 1)
+        x = self.linear(x)
+        return x
 
 class Residual(nn.Module):
     def __init__(self, fn):
@@ -21,7 +50,6 @@ class Residual(nn.Module):
     def forward(self, x, **kwargs):
         return self.fn(x, **kwargs) + x
 
-
 class PreNorm(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
@@ -30,7 +58,7 @@ class PreNorm(nn.Module):
 
     def forward(self, x, **kwargs):
         return self.fn(self.norm(x), **kwargs)
-
+        # return self.norm(self.fn(x),**kwargs) #version2
 
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim):
@@ -44,7 +72,6 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-
 def create_mask(window_size, displacement, upper_lower, left_right):
     mask = torch.zeros(window_size ** 2, window_size ** 2)
 
@@ -53,22 +80,23 @@ def create_mask(window_size, displacement, upper_lower, left_right):
         mask[:-displacement * window_size, -displacement * window_size:] = float('-inf')
 
     if left_right:
-        mask = rearrange(mask, '(h1 w1) (h2 w2) -> h1 w1 h2 w2', h1=window_size, h2=window_size)
+        mask = rearrange(mask, '(h1 w1) (h2 w2) -> h1 w1 h2 w2', h1=window_size, h2=window_size) # to handle last vertical patches
         mask[:, -displacement:, :, :-displacement] = float('-inf')
         mask[:, :-displacement, :, -displacement:] = float('-inf')
         mask = rearrange(mask, 'h1 w1 h2 w2 -> (h1 w1) (h2 w2)')
 
     return mask
 
-
 def get_relative_distances(window_size):
     indices = torch.tensor(np.array([[x, y] for x in range(window_size) for y in range(window_size)]))
     distances = indices[None, :, :] - indices[:, None, :]
     return distances
 
-
 class WindowAttention(nn.Module):
     def __init__(self, dim, heads, head_dim, shifted, window_size, relative_pos_embedding):
+        #dim = hidden_dim = (96,192,384,768)
+        #head num_head = (3,6,12,24)
+        #head_dim = 32
         super().__init__()
         inner_dim = head_dim * heads
 
@@ -79,16 +107,17 @@ class WindowAttention(nn.Module):
         self.shifted = shifted
 
         if self.shifted:
-            displacement = window_size // 2
+            displacement = window_size // 2 # important with non square
             self.cyclic_shift = CyclicShift(-displacement)
             self.cyclic_back_shift = CyclicShift(displacement)
+            # (49,49): mask are NOT learnable parameters; requires_grad=False
             self.upper_lower_mask = nn.Parameter(create_mask(window_size=window_size, displacement=displacement,
                                                              upper_lower=True, left_right=False), requires_grad=False)
             self.left_right_mask = nn.Parameter(create_mask(window_size=window_size, displacement=displacement,
                                                             upper_lower=False, left_right=True), requires_grad=False)
 
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
-
+        #dim = (96, 192, 384, 768) and (inter_dim = * heads); we can also use C*3 and givens us same thing
         if self.relative_pos_embedding:
             self.relative_indices = get_relative_distances(window_size) + window_size - 1
             self.pos_embedding = nn.Parameter(torch.randn(2 * window_size - 1, 2 * window_size - 1))
@@ -110,6 +139,7 @@ class WindowAttention(nn.Module):
         q, k, v = map(
             lambda t: rearrange(t, 'b (nw_h w_h) (nw_w w_w) (h d) -> b h (nw_h nw_w) (w_h w_w) d',
                                 h=h, w_h=self.window_size, w_w=self.window_size), qkv)
+        #(b=1, h=(3,6,12,24), (nw_h*nw_w)=(64,16,4,1), (w_h*w_w)=49, d= 32)
 
         dots = einsum('b h w i d, b h w j d -> b h w i j', q, k) * self.scale
 
@@ -133,92 +163,51 @@ class WindowAttention(nn.Module):
             out = self.cyclic_back_shift(out)
         return out
 
-
-class SwinBlock(nn.Module):
-    def __init__(self, dim, heads, head_dim, mlp_dim, shifted, window_size, relative_pos_embedding):
-        super().__init__()
-        self.attention_block = Residual(PreNorm(dim, WindowAttention(dim=dim,
-                                                                     heads=heads,
-                                                                     head_dim=head_dim,
-                                                                     shifted=shifted,
-                                                                     window_size=window_size,
-                                                                     relative_pos_embedding=relative_pos_embedding)))
-        self.mlp_block = Residual(PreNorm(dim, FeedForward(dim=dim, hidden_dim=mlp_dim)))
-
-    def forward(self, x):
-        x = self.attention_block(x)
-        x = self.mlp_block(x)
-        return x
-
-
-class PatchMerging(nn.Module):
-    def __init__(self, in_channels, out_channels, downscaling_factor):
-        super().__init__()
-        self.downscaling_factor = downscaling_factor
-        self.patch_merge = nn.Unfold(kernel_size=downscaling_factor, stride=downscaling_factor, padding=0)
-        self.linear = nn.Linear(in_channels * downscaling_factor ** 2, out_channels) #in_chanel =3, out_chanel=96
-       
-
-    def forward(self, x):
-        b, c, h, w = x.shape
-        new_h, new_w = h // self.downscaling_factor, w // self.downscaling_factor #56 x 56   
-        t =  self.patch_merge(x)        
-        x = self.patch_merge(x).view(b, -1, new_h, new_w).permute(0, 2, 3, 1)   
-        x = self.linear(x)
-        return x
-
-
 class StageModule(nn.Module):
-    def __init__(self, in_channels, hidden_dimension, layer, downscaling_factor, num_heads, head_dim, window_size,
+    def __init__(self, in_channels, hidden_dimension, layers, downscaling_factor, num_heads, head_dim, window_size,
                  relative_pos_embedding):
         super().__init__()
-        assert layer % 2 == 0, 'Stage layer need to be divisible by 2 for regular and shifted block.'
+        assert layers % 2 == 0, 'Stage layers need to be divisible by 2 for regular and shifted block.'
 
         self.patch_partition = PatchMerging(in_channels=in_channels, out_channels=hidden_dimension,
                                             downscaling_factor=downscaling_factor)
 
-        self.layer = nn.ModuleList([])
+        self.layers = nn.ModuleList([])
         
-        self.layer.append(nn.ModuleList([
+        self.layers.append(nn.ModuleList([
             SwinBlock(dim=hidden_dimension, heads=num_heads, head_dim=head_dim, mlp_dim=hidden_dimension * 4,
                           shifted=False, window_size=window_size, relative_pos_embedding=relative_pos_embedding),
             SwinBlock(dim=hidden_dimension, heads=num_heads, head_dim=head_dim, mlp_dim=hidden_dimension * 4,
                           shifted=True, window_size=window_size, relative_pos_embedding=relative_pos_embedding),
         ]))
 
-    def forward(self, x):        
-        x = self.patch_partition(x)#1,224,224,96       
-        for regular_block, shifted_block in self.layer:
+    def forward(self, x):
+        x = self.patch_partition(x)
+        for regular_block, shifted_block in self.layers:
             x = regular_block(x)
             x = shifted_block(x)
         return x.permute(0, 3, 1, 2)
 
-
-class SwinTransformer(nn.Module):
-    def __init__(self, *, hidden_dim, layer, head, channels=3, num_classes=1000, head_dim=32, window_size=7,
-                 downscaling_factor=1, relative_pos_embedding=True):
+class SwinTransformer_block(nn.Module):
+    def __init__(self, *, hidden_dim, channels=3, num_classes=1000, head_dim=32, window_size=4,
+                 downscaling_factors=(1, 2, 2, 2), relative_pos_embedding=True):
         super().__init__()
 
-        self.stage1 = StageModule(in_channels=channels, hidden_dimension=hidden_dim, layer=layer,
-                                  downscaling_factor=downscaling_factor, num_heads=head, head_dim=head_dim,
+        self.stage1 = StageModule(in_channels=channels, hidden_dimension=hidden_dim, layers=2,
+                                  downscaling_factor=1, num_heads=3, head_dim=head_dim,
                                   window_size=window_size, relative_pos_embedding=relative_pos_embedding)
-        
-
+                                  
 
     def forward(self, img):
-        x = self.stage1(img)
+        x = self.stage1(img)        
         return x
 
 
-def swin_t(hidden_dim=96, layer=2, head=6, **kwargs):
-    return SwinTransformer(hidden_dim=hidden_dim, layer=layer, head=head, **kwargs)
-
-
 if __name__ == '__main__':
-    image = torch.rand(1,3,224,224)
-    model = swin_t()
+    image = torch.rand(1,3,8,128)
+    model =  SwinTransformer_block(hidden_dim=96)
+    #print(model)
     result = model(image)
-    print(result.shape)
     
-    #print(result.shape)
+    print(result.shape)
    
