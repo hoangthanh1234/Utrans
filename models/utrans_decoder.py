@@ -85,33 +85,25 @@ class UpConvBlock(nn.Module):
 
 class DecoderUpConv(nn.Module):
     def __init__(
-        self,
-        n_cls,
-        patch_size,
-        d_encoder,
-        d_decoder,
-        scale_factor=(2, 8),
-        patch_stride=None,
-        dropout_rate=0.2,
-        drop_out=True,
-        skip_filters=0):
+        self,      
+        dropout_rate=0.2):
         super().__init__()
 
-        self.d_encoder = d_encoder
-        self.d_decoder = d_decoder
-        self.patch_size = patch_size
-        self.patch_stride = patch_stride
-        self.n_cls = n_cls
+        # self.d_encoder = d_encoder
+        # self.d_decoder = d_decoder
+        # self.patch_size = patch_size
+        # self.patch_stride = patch_stride
+        # self.n_cls = n_cls
 
-        self.up_conv_block = UpConvBlock(
-            d_encoder, d_decoder,
-            dropout_rate=dropout_rate,
-            scale_factor=scale_factor,
-            drop_out=drop_out,
-            skip_filters=skip_filters)
+        # self.up_conv_block = UpConvBlock(
+        #     d_encoder, d_decoder,
+        #     dropout_rate=dropout_rate,
+        #     scale_factor=scale_factor,
+        #     drop_out=drop_out,
+        #     skip_filters=skip_filters)
 
-        self.head = nn.Conv2d(d_decoder, n_cls, kernel_size=(1, 1))
-        self.apply(init_weights)
+        # self.head = nn.Conv2d(d_decoder, n_cls, kernel_size=(1, 1))
+        # self.apply(init_weights)
 
         self.node1 = Decoder_node(256,64)
         self.node2 = Decoder_node(64,128)
@@ -145,10 +137,10 @@ class DecoderUpConv(nn.Module):
 
     def forward(self, x, im_size, skip=None, return_features=False, encoder_infor=None):
         H, W = im_size
-        GS_H, GS_W = get_grid_size_2d(16, 48, self.patch_size, self.patch_stride) # importance to resize;       
-        x = rearrange(x, 'b (h w) c -> b c h w', h=GS_H) # B, d_model, image_size[0]/patch_stride[0], image_size[1]/patch_stride[1]
-        #Up conv to C=256
-        x = self.up_conv_block(x, skip)
+        #GS_H, GS_W = get_grid_size_2d(16, 48, self.patch_size, self.patch_stride) # importance to resize;       
+        # x = rearrange(x, 'b (h w) c -> b c h w', h=GS_H) # B, d_model, image_size[0]/patch_stride[0], image_size[1]/patch_stride[1]
+        # #Up conv to C=256
+        # x = self.up_conv_block(x, skip)
     
         #get the information from encoder 
         skip1 = encoder_infor['skip1']
@@ -162,12 +154,10 @@ class DecoderUpConv(nn.Module):
         en_block4 = encoder_infor['en_note4']       
         
         #implement Encoder Blocks
-        note1 = self.node1(x, previous = None, Node =1, encode_1=None, encode_2=None)
-        print("note1: ",note1.shape)
+        note1 = self.node1(x, previous = None, Node =1, encode_1=None, encode_2=None)        
         #resize_channel_1 = self.reChannel_1(note1)     
 
-        note2 = self.node2(note1, previous = None, Node =2, encode_1=skip3, encode_2=en_block3)
-        print("note2: ",note2.shape)
+        note2 = self.node2(note1, previous = None, Node =2, encode_1=skip3, encode_2=en_block3)        
         resize_channel_2 = self.reChannel_2(note2)
        
         note3 = self.node3(resize_channel_2, previous = note1, Node =3, encode_1=skip2, encode_2=en_block2)
@@ -177,10 +167,9 @@ class DecoderUpConv(nn.Module):
         resize_channel_4 = self.reChannel_4(note4)
 
         
-        if return_features:            
-            return resize_channel_4 #return feature this case
-        else:           
-            return self.head(resize_channel_4)
+                   
+        return resize_channel_4 #return feature this case
+        
 
 
 class PixelShuffleUp(nn.Module):
@@ -248,12 +237,11 @@ class Decoder_node(nn.Module):
 
     def forward(self, x, previous, Node, encode_1, encode_2):       
         
-        print("X: ", x.shape)
+        
         if Node != 1:
             upsample = self.upsample_2(x)
         else:
-            upsample = x     
-        print("upsample: ", upsample.shape)  
+            upsample = x            
        
 
         shortcut = self.conv1(upsample)

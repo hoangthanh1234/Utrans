@@ -124,3 +124,50 @@ def unpadding(y, target_size):
     if extra_w > 0:
         y = y[:, :, :, :-extra_w]
     return y
+
+
+class ConvBNReLuK1(nn.Module):
+    def __init__(self, in_channel, out_channel):
+        super(ConvBNReLuK1,self).__init__()
+        self.conv = nn.Conv2d(in_channel, out_channel, kernel_size=(1,1), stride=1, padding=0)
+        self.bn = nn.BatchNorm2d(out_channel)
+        self.relu = nn.LeakyReLU()
+    def forward(self, x):
+        return self.relu(self.bn(self.conv(x)))
+
+class ConvBNReLuK3(nn.Module):
+    def __init__(self, in_channel, out_channel):
+        super(ConvBNReLuK3,self).__init__()
+        self.conv = nn.Conv2d(in_channel, out_channel, kernel_size=(3,3), stride=1, padding=1)
+        self.bn = nn.BatchNorm2d(out_channel)
+        self.relu = nn.LeakyReLU()
+    def forward(self, x):
+        return self.relu(self.bn(self.conv(x)))
+
+class ConvBNReLuK3D2(nn.Module):
+    def __init__(self, in_channel, out_channel):
+        super(ConvBNReLuK3D2,self).__init__()
+        self.conv = nn.Conv2d(in_channel, out_channel, kernel_size=(3,3),dilation=2, stride=1, padding=2)
+        self.bn = nn.BatchNorm2d(out_channel)
+        self.relu = nn.LeakyReLU()
+    def forward(self, x):
+        return self.relu(self.bn(self.conv(x)))
+
+class ConvBNReLuK7(nn.Module):
+    def __init__(self, in_channel, out_channel):
+        super(ConvBNReLuK7,self).__init__()
+        self.conv = nn.Conv2d(in_channel, out_channel, kernel_size=(7,7),stride=1, padding=3)
+        self.bn = nn.BatchNorm2d(out_channel)
+        self.relu = nn.LeakyReLU()
+    def forward(self, x):
+        return self.relu(self.bn(self.conv(x)))
+
+class ConvBNReLuK7D2(nn.Module):
+    def __init__(self, in_channel, out_channel):
+        super(ConvBNReLuK7D2,self).__init__()
+        self.conv = nn.Conv2d(in_channel, out_channel, kernel_size=(7,7),dilation=2, stride=1, padding=6)
+        self.bn = nn.BatchNorm2d(out_channel)
+        self.relu = nn.LeakyReLU()
+    def forward(self, x):
+        return self.relu(self.bn(self.conv(x)))
+

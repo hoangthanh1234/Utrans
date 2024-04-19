@@ -93,11 +93,11 @@ class Utrans_KPConv(nn.Module):
     ):
         super().__init__()
         self.n_cls = n_cls
-        self.patch_size = encoder.patch_size
-        self.patch_stride = encoder.patch_stride
+        self.patch_size =5
+        self.patch_stride = 5
         self.encoder = encoder
         self.decoder = decoder
-        del self.decoder.head
+        #del self.decoder.head
         self.kpclassifier = kpclassifier
 
     @torch.jit.ignore
@@ -111,25 +111,22 @@ class Utrans_KPConv(nn.Module):
         return nwd_params
 
     def forward_2d_features(self, im):
-        #print("Image 1: ", im.shape)
+        
         H_ori, W_ori = im.size(2), im.size(3)
         im = padding(im, self.patch_size)
         H, W = im.size(2), im.size(3)
-        #print("Image 2: ", im.shape)
+       
         
         x, encoder_infor = self.encoder(im, return_features=True) # x.shape = [16, 577, 384]
-        #print("XXX: ", x.shape)
-        # remove CLS tokens for decoding
+       
         num_extra_tokens = 1
         x = x[:, num_extra_tokens:] # x.shape = [16, 576, 384]
-        #print("XXX remove token: ", x.shape)
+        
         skip = None
-        feats = self.decoder(x, (H, W), skip, return_features=True, encoder_infor=encoder_infor)
-        #print("Feature: : ", feats.shape)
-        feats = F.interpolate(feats, size=(H, W), mode='bilinear', align_corners=False)
-        #print("Feature resize: : ", feats.shape)
+        feats = self.decoder(x, (H, W), skip, return_features=True, encoder_infor=encoder_infor)       
+        feats = F.interpolate(feats, size=(H, W), mode='bilinear', align_corners=False)        
         feats = unpadding(feats, (H_ori, W_ori))
-        #print("Feature unpadding: : ", feats.shape)
+        
         return feats
    
     def forward(self, im, px, py, pxyz, pknn, num_points):
