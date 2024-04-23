@@ -46,14 +46,15 @@ def sliding_window(im, flip, window_size, window_stride):
 
 
 def merge_windows(windows, window_size, ori_shape):
-    ws_h, ws_w = window_size
-    im_windows = windows['seg_maps']
-    anchors = windows['anchors']
+    ws_h, ws_w = window_size    #
+    im_windows = windows['seg_maps']   
+    anchors = windows['anchors']  
     C = im_windows[0].shape[0]
     H, W = windows['shape']
     flip = windows['flip']
 
     logit = torch.zeros((C, H, W), device=im_windows.device)
+
     count = torch.zeros((1, H, W), device=im_windows.device)
     for window, (ha, wa) in zip(im_windows, anchors):
         logit[:, ha : ha + ws_h, wa : wa + ws_w] += window
@@ -94,15 +95,16 @@ def inference(
         
         with torch.no_grad():
             if use_kpconv:
-                seg_maps = model.forward_2d_features(crops) # shape = [n_windows, d_decoder, wsize_h, wsize_w]
+                seg_maps = model.forward_2d_features(crops) # shape = [n_windows, d_decoder, wsize_h, wsize_w]               
             else:
                 seg_maps = model.forward(crops) # shape = [n_windows, n_classes, wsize_h, wsize_w]
         windows['seg_maps'] = seg_maps
         im_seg_map = merge_windows(windows, window_size, ori_shape) # shape = [n_classes or d_decoder, ori_shape[0], ori_shape[1]]
-
+        #print("im_seg_map: ", im_seg_map.shape)
         if seg_map is None:
             seg_map = im_seg_map
         else:
             seg_map += im_seg_map
     seg_map /= len(ims)
+    #print("im_seg_map: ", im_seg_map.shape)
     return seg_map

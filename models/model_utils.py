@@ -171,3 +171,18 @@ class ConvBNReLuK7D2(nn.Module):
     def forward(self, x):
         return self.relu(self.bn(self.conv(x)))
 
+class ConvBNReLuK5(nn.Module):
+    def __init__(self, in_channel, out_channel):
+        super(ConvBNReLuK5,self).__init__()
+        self.conv = nn.Conv2d(in_channel, out_channel, kernel_size=(5,5), stride=1, padding=2)
+        self.bn = nn.BatchNorm2d(out_channel)
+        self.relu = nn.LeakyReLU()
+    def forward(self, x):
+        return self.relu(self.bn(self.conv(x)))
+
+
+if __name__ == '__main__':
+    image = torch.rand(4,256,4,32)  #(B, C, H, W)
+    test = ConvBNReLuK5(256,256) 
+    result = test(image)
+    print(result.shape)

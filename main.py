@@ -26,30 +26,23 @@ import utils
 import utils.tools as tools
 from models.model_utils import resize_pos_embed
 
-from models.Utrans import Utrans
+from models.Utrans import Utrans_RV
 
 
 def build_Utrans_model(settings, pretrained_path=None):
-    model = Utrans(
+    model = Utrans_RV(
         in_channels=settings.in_channels,
-        n_cls=settings.n_classes,
-        backbone=settings.vit_backbone,
-        image_size=settings.image_size,
-        pretrained_path=pretrained_path,
-        new_patch_size=settings.patch_size,
-        new_patch_stride=settings.patch_stride,
-        reuse_pos_emb=settings.reuse_pos_emb,
-        reuse_patch_emb=settings.reuse_patch_emb,
-        conv_stem=settings.conv_stem,
-        stem_base_channels=settings.stem_base_channels,
-        stem_hidden_dim=settings.D_h,
-        skip_filters=settings.skip_filters,
-        decoder=settings.decoder,
-        up_conv_d_decoder=settings.D_h,
-        up_conv_scale_factor=settings.patch_stride,
-        use_kpconv=settings.use_kpconv) 
-    return model
+        out_channels = settings.out_channels,
+        base_channels=settings.base_channels,
+        n_cls=settings.n_classes,        
+        im_size=settings.image_size,        
+        window_swin_size=settings.window_swin_size,
+        shift_size=settings.shift_size,
+        dropout_rate=settings.dropout_rate     
+        ) 
 
+    return model
+ 
 
 class Experiment(object):
     def __init__(self, settings: Option):
@@ -78,13 +71,12 @@ class Experiment(object):
         # Init trainer
         self.trainer = Trainer(self.settings, self.model, self.recorder) 
         # Load checkpoint
-        self._loadCheckpoint() 
+        #self._loadCheckpoint() 
 
 
     def _initModel(self):
         # Model
         model = build_Utrans_model(self.settings,pretrained_path=self.settings.pretrained_model)
-
         if self.recorder is not None:
             self.recorder.logger.info(f'model = {model}')
             stats = model.counter_model_parameters()
@@ -96,51 +88,51 @@ class Experiment(object):
         return model
 
 
-    def _loadCheckpoint(self):
-        if self.settings.checkpoint is not None:
-            print(f'Resume training from checkpoint {self.settings.checkpoint}')
-            if not os.path.isfile(self.settings.checkpoint):
-                raise FileNotFoundError('checkpoint file not found: {}'.format(self.settings.checkpoint))
+    #def _loadCheckpoint(self):
+        # if self.settings.checkpoint is not None:
+        #     print(f'Resume training from checkpoint {self.settings.checkpoint}')
+        #     if not os.path.isfile(self.settings.checkpoint):
+        #         raise FileNotFoundError('checkpoint file not found: {}'.format(self.settings.checkpoint))
 
-            checkpoint_data = torch.load(self.settings.checkpoint, map_location='cpu')
-            if self.settings.finetune_pretrained_model:
-                # When fine-tuning a segmentation model previously pre-trained to another dataset then it
-                # is necessary to adapt the (a) pos_embeds and (b) to remove the classification head.
-                image_size = self.model.utrans.encoder.image_size
+        #     checkpoint_data = torch.load(self.settings.checkpoint, map_location='cpu')
+        #     if self.settings.finetune_pretrained_model:
+        #         # When fine-tuning a segmentation model previously pre-trained to another dataset then it
+        #         # is necessary to adapt the (a) pos_embeds and (b) to remove the classification head.
+        #         image_size = self.model.utrans.encoder.image_size
                
-                patch_stride = self.model.utrans.encoder.patch_stride
-                if (self.model.utrans.encoder.pos_embed.shape != checkpoint_data['model']['utrans.encoder.pos_embed'].shape):
-                    assert self.model.utrans.encoder.pos_embed.shape[2] == checkpoint_data['model']['utrans.encoder.pos_embed'].shape[2]
-                    gs_new_h = int(image_size[0] // patch_stride[0])
-                    gs_new_w = int(image_size[1] // patch_stride[1])
-                    num_extra_tokens = 1
-                    assert (gs_new_h * gs_new_w + num_extra_tokens) == self.model.utrans.encoder.pos_embed.shape[1]
-                    old_len = checkpoint_data['model']['utrans.encoder.pos_embed'].shape[1] - num_extra_tokens # remove one for the classification token
+        #         patch_stride = self.model.utrans.encoder.patch_stride
+        #         if (self.model.utrans.encoder.pos_embed.shape != checkpoint_data['model']['utrans.encoder.pos_embed'].shape):
+        #             assert self.model.utrans.encoder.pos_embed.shape[2] == checkpoint_data['model']['utrans.encoder.pos_embed'].shape[2]
+        #             gs_new_h = int(image_size[0] // patch_stride[0])
+        #             gs_new_w = int(image_size[1] // patch_stride[1])
+        #             num_extra_tokens = 1
+        #             assert (gs_new_h * gs_new_w + num_extra_tokens) == self.model.utrans.encoder.pos_embed.shape[1]
+        #             old_len = checkpoint_data['model']['utrans.encoder.pos_embed'].shape[1] - num_extra_tokens # remove one for the classification token
 
-                    gs_old_w = gs_new_w
-                    gs_old_h = old_len // gs_old_w
-                    checkpoint_data['model']['utrans.encoder.pos_embed'] = (
-                        resize_pos_embed(checkpoint_data['model']['utrans.encoder.pos_embed'],
-                                         grid_old_shape=(gs_old_h, gs_old_w),
-                                         grid_new_shape=(gs_new_h, gs_new_w),
-                                         num_extra_tokens=num_extra_tokens))
-                assert self.model.utrans.encoder.pos_embed.shape == checkpoint_data['model']['utrans.encoder.pos_embed'].shape
+        #             gs_old_w = gs_new_w
+        #             gs_old_h = old_len // gs_old_w
+        #             checkpoint_data['model']['utrans.encoder.pos_embed'] = (
+        #                 resize_pos_embed(checkpoint_data['model']['utrans.encoder.pos_embed'],
+        #                                  grid_old_shape=(gs_old_h, gs_old_w),
+        #                                  grid_new_shape=(gs_new_h, gs_new_w),
+        #                                  num_extra_tokens=num_extra_tokens))
+        #         assert self.model.utrans.encoder.pos_embed.shape == checkpoint_data['model']['utrans.encoder.pos_embed'].shape
 
-                for key in ('utrans.kpclassifier.head.weight', 'utrans.kpclassifier.head.bias'):
-                    del checkpoint_data['model'][key]
+        #         for key in ('utrans.kpclassifier.head.weight', 'utrans.kpclassifier.head.bias'):
+        #             del checkpoint_data['model'][key]
 
-            checkpoint_data_model = checkpoint_data['model']
-            msg = self.model.load_state_dict(checkpoint_data_model, strict=(not self.settings.finetune_pretrained_model))
-            print(f'msg = {msg}')
+        #     checkpoint_data_model = checkpoint_data['model']
+        #     msg = self.model.load_state_dict(checkpoint_data_model, strict=(not self.settings.finetune_pretrained_model))
+        #     print(f'msg = {msg}')
 
-            if not self.settings.finetune_pretrained_model:
-                print(f'==> Loading optimizer')
-                if self.settings.val_only is False:
-                    self.trainer.optimizer.load_state_dict(checkpoint_data['optimizer'])
-                self.epoch_start = checkpoint_data['epoch'] + 1
-                print("self.e", self.epoch_start)
-                if ('fp16_scaler' in checkpoint_data) and (checkpoint_data['fp16_scaler'] is not None):
-                    self.trainer.fp16_scaler.load_state_dict(checkpoint_data['fp16_scaler'])
+        #     if not self.settings.finetune_pretrained_model:
+        #         print(f'==> Loading optimizer')
+        #         if self.settings.val_only is False:
+        #             self.trainer.optimizer.load_state_dict(checkpoint_data['optimizer'])
+        #         self.epoch_start = checkpoint_data['epoch'] + 1
+        #         print("self.e", self.epoch_start)
+        #         if ('fp16_scaler' in checkpoint_data) and (checkpoint_data['fp16_scaler'] is not None):
+        #             self.trainer.fp16_scaler.load_state_dict(checkpoint_data['fp16_scaler'])
 
 
     def run(self):

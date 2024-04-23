@@ -82,7 +82,6 @@ class KPClassifier(nn.Module):
         res = self.relu(self.bn(res))
         return self.head(res)
 
-
 class Utrans_KPConv(nn.Module):
     def __init__(
         self,
@@ -110,26 +109,13 @@ class Utrans_KPConv(nn.Module):
         )
         return nwd_params
 
-    def forward_2d_features(self, im):
-        
-        H_ori, W_ori = im.size(2), im.size(3)
-        im = padding(im, self.patch_size)
-        H, W = im.size(2), im.size(3)
-       
-        
-        x, encoder_infor = self.encoder(im, return_features=True) # x.shape = [16, 577, 384]
-       
-        num_extra_tokens = 1
-        x = x[:, num_extra_tokens:] # x.shape = [16, 576, 384]
-        
-        skip = None
-        feats = self.decoder(x, (H, W), skip, return_features=True, encoder_infor=encoder_infor)       
-        feats = F.interpolate(feats, size=(H, W), mode='bilinear', align_corners=False)        
-        feats = unpadding(feats, (H_ori, W_ori))
-        
+    def forward_2d_features(self, im):  
+        H, W = im.size(2), im.size(3)       
+        x, encoder_infor = self.encoder(im) # x.shape = [16, 577, 384] 
+        feats = self.decoder(x, (H, W), return_features=True, encoder_infor=encoder_infor)  
         return feats
    
     def forward(self, im, px, py, pxyz, pknn, num_points):
         feats = self.forward_2d_features(im)        
-        masks3d = self.kpclassifier(feats, px, py, pxyz, pknn, num_points)       
+        masks3d = self.kpclassifier(feats, px, py, pxyz, pknn, num_points)  
         return masks3d

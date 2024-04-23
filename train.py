@@ -154,7 +154,7 @@ class Trainer(object):
 
         collate_fn = dataset.custom_collate_kpconv_fn if self.settings.use_kpconv else None
         if tools.is_dist_avail_and_initialized():
-            train_sampler = torch.utils.data.distributed.DistributedSampler(trainset)
+            train_sampler = torch.utils.data.distributed.DistributedSampler(trainset)            
             val_sampler = torch.utils.data.distributed.DistributedSampler(valset, shuffle=False)
 
             train_loader = torch.utils.data.DataLoader(
@@ -183,7 +183,6 @@ class Trainer(object):
                 shuffle=True,
                 drop_last=True,
                 collate_fn=collate_fn)
-            
 
             val_loader = torch.utils.data.DataLoader(
                 self.val_range_loader,
@@ -192,7 +191,6 @@ class Trainer(object):
                 shuffle=False,
                 drop_last=False,
                 collate_fn=collate_fn)
-
             return train_loader, val_loader, None, None
 
     def _initCriterion(self):

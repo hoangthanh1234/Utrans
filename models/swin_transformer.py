@@ -5,8 +5,10 @@ from einops import rearrange, repeat
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from typing import Callable, List, Optional, Tuple, Union
 import math
+from .SCA import sa_layer
 
 _int_or_tuple_2_t = Union[int, Tuple[int, int]]
+
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -298,17 +300,39 @@ class Utrans_Swin(nn.Module):
         self.block1 = SwinTransformerBlock(dim=dim, input_resolution=input_resolution, window_size=window_size)
         self.block2 = SwinTransformerBlock(dim=dim, input_resolution=input_resolution, window_size=window_size, shift_size=shift_size)
     def forward(self, x):
+        x = x.permute(0, 2, 3, 1) #convert (B, H, W, C) to N, C, H, W)
         x = self.block2(self.block1(x))
+        B, H, W, C = x.shape
+        x = x.permute(0, 3, 1, 2) # N, C, H, W) to (B, H, W, C)
         return x
 
+class Swin_SCA(nn.Module):
+    def __init__(self, dim, input_resolution, window_size, shift_size):
+        super().__init__()
+        self.dim = dim
+        self.input_resolution = input_resolution
+        self.window_size = window_size
+        self.shift_size = shift_size
+        self.swin_block = Utrans_Swin(dim=self.dim, input_resolution=self.input_resolution, window_size=self.window_size, shift_size=self.shift_size)
+        self.sca = sa_layer(self.dim)
+    def forward(self, x):
+        swin_block = self.swin_block(x)
+        return self.sca(swin_block)
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 if __name__ == '__main__':
-    image = torch.rand(4,4,32,256)  #(B, H, W, C)
+    image = torch.rand(4,256,4,32)  #(N, C, H, W) or (B, H, W, C)
     window_size=(4,16)
     input_resolution = (4,32)
     shift_size=3 
     dim = 256  
-    model = Utrans_Swin(dim=dim, input_resolution=input_resolution, window_size=window_size, shift_size=shift_size)
+    #model = Utrans_Swin(dim=dim, input_resolution=input_resolution, window_size=window_size, shift_size=shift_size)
+    model = Swin_SCA(dim=dim, input_resolution=input_resolution, window_size=window_size, shift_size=shift_size)
     result = model(image)
+    print("result: ", result.shape)
+    print("Swin_SCA: ", count_parameters(model))
     
    
 

@@ -56,43 +56,45 @@ class Option(object):
         self.use_fp16 = self.config.get('use_fp16', False) # for mixed-precision training
 
 
-        # Model config
-        self.vit_backbone = self.config.get('vit_backbone', 'vit_small_patch16_384')
-        self.in_channels = self.config.get('in_channels', 5)
-        self.patch_size = self.config.get('patch_size', [2, 8])
-        self.patch_stride = self.config.get('patch_stride', [2, 8])
-        self.image_size = self.config.get('image_size', [256, 768])
-        self.window_size = self.config.get('window_size', [256, 768])
-        self.window_stride = self.config.get('window_stride', [256, 768])
-        self.original_image_size = self.config.get('original_image_size', [256, 2048])
+        # Model config        
+        self.image_size = self.config.get('image_size', [32, 512])
+        self.window_size = self.config.get('window_size', [32, 512])
+        self.window_stride = self.config.get('window_stride', [32, 512])
+        self.original_image_size = self.config.get('original_image_size', [32, 2048])
+        self.base_channels = self.config.get('base_channels',32)
+        self.window_swin_size = self.config.get('window_swin_size',[4,16])
+        self.shift_size = self.config.get('shift_size', 1)
+        self.dropout_rate = self.config.get('dropout_rate', 0.1)
+        self.in_channels = self.config.get('in_channels')
+        self.out_channels = self.config.get('out_channels')
 
         # Freeze encoder params
-        self.freeze_vit_encoder = self.config.get('freeze_vit_encoder', False)
-        self.unfreeze_layernorm = self.config.get('unfreeze_layernorm', False)
-        self.unfreeze_attn = self.config.get('unfreeze_attn', False)
-        self.unfreeze_ffn = self.config.get('unfreeze_ffn', False)
+        # self.freeze_vit_encoder = self.config.get('freeze_vit_encoder', False)
+        # self.unfreeze_layernorm = self.config.get('unfreeze_layernorm', False)
+        # self.unfreeze_attn = self.config.get('unfreeze_attn', False)
+        # self.unfreeze_ffn = self.config.get('unfreeze_ffn', False)
 
         # Stem
-        self.conv_stem = self.config.get('conv_stem', 'ConvStem')
-        self.stem_base_channels = self.config.get('stem_base_channels', 32)
-        self.D_h = self.config.get('D_h', 256)
+        # self.conv_stem = self.config.get('conv_stem', 'ConvStem')
+        # self.stem_base_channels = self.config.get('stem_base_channels', 32)
+        # self.D_h = self.config.get('D_h', 256)
 
         # Decoder
-        self.decoder = self.config.get('decoder', 'up_conv')
-        self.skip_filters = self.config.get('skip_filters', 0)
+        # self.decoder = self.config.get('decoder', 'up_conv')
+        # self.skip_filters = self.config.get('skip_filters', 0)
 
         # 3D refiner
         self.use_kpconv = self.config.get('use_kpconv', True)
 
 
         # Checkpoint model
-        self.checkpoint = self.config.get('checkpoint', None)
-        self.pretrained_model = self.config.get('pretrained_model', None)
-        self.finetune_pretrained_model = self.config.get('finetune_pretrained_model', False)
+        # self.checkpoint = self.config.get('checkpoint', None)
+        # self.pretrained_model = self.config.get('pretrained_model', None)
+        # self.finetune_pretrained_model = self.config.get('finetune_pretrained_model', False)
 
         # Loading pre-trained patch and positional embeddings
-        self.reuse_pos_emb = self.config.get('reuse_pos_emb', False)
-        self.reuse_patch_emb = self.config.get('reuse_patch_emb', False)
+        # self.reuse_pos_emb = self.config.get('reuse_pos_emb', False)
+        # self.reuse_patch_emb = self.config.get('reuse_patch_emb', False)
 
 
         # Save results
@@ -108,34 +110,34 @@ class Option(object):
 
         # There is no skip connection if no convolutional stem is used or the linear decoder is used.
         # (If no convolutional stem is used, then we use PatchEmbedding istead).
-        if self.conv_stem == 'none' or self.decoder == 'linear':
-            assert self.skip_filters == 0
+        # if self.conv_stem == 'none' or self.decoder == 'linear':
+        #     assert self.skip_filters == 0
 
         # If there is a skip connection, it's channel dim has to be D_h.
-        if self.skip_filters > 0:
-            assert self.skip_filters == self.D_h
+        # if self.skip_filters > 0:
+        #     assert self.skip_filters == self.D_h
 
         # If a convolutional stem is used, patch_size = patch_stride and there is no patch embedding
         # so we can't load pre-trained weights in the patch embeddings.
-        if self.conv_stem != 'none':
-            assert self.patch_size == self.patch_stride
-            assert self.reuse_patch_emb == False
+        # if self.conv_stem != 'none':
+        #     assert self.patch_size == self.patch_stride
+        #     assert self.reuse_patch_emb == False
 
         # When using the KPConv layer, the decoder has to be up_conv.
-        if self.use_kpconv:
-            assert self.decoder == 'up_conv'
+        # if self.use_kpconv:
+        #     assert self.decoder == 'up_conv'
 
         # The following hyperparameters have to be tuples or lists with two elements.
-        tuple_list = [self.patch_size, self.patch_stride,
-                      self.image_size, self.window_size, self.window_stride,
-                      self.original_image_size]
-        for i in tuple_list:
-            assert isinstance(i, (list, tuple))
-            assert len(i) == 2
+        # tuple_list = [self.patch_size, self.patch_stride,
+        #               self.image_size, self.window_size, self.window_stride,
+        #               self.original_image_size]
+        # for i in tuple_list:
+        #     assert isinstance(i, (list, tuple))
+        #     assert len(i) == 2
 
         # No patch and positional embeddings are loaded when training from scratch.
-        if self.pretrained_model == None:
-            assert self.reuse_patch_emb == self.reuse_pos_emb == False
+        # if self.pretrained_model == None:
+        #     assert self.reuse_patch_emb == self.reuse_pos_emb == False
 
 
     def check_path(self):
