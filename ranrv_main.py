@@ -25,38 +25,30 @@ import models
 import utils
 import utils.tools as tools
 from models.model_utils import resize_pos_embed
-from models.rangevit import RangeViT
+
+from models.Utrans import Utrans_RV
 
 
-def build_rangevit_model(settings, pretrained_path=None):
-    model = RangeViT(
+def build_Utrans_model(settings, pretrained_path=None):
+    model = Utrans_RV(
         in_channels=settings.in_channels,
-        n_cls=settings.n_classes,
-        backbone=settings.vit_backbone,
-        image_size=settings.image_size,
-        pretrained_path=pretrained_path,
-        new_patch_size=settings.patch_size,
-        new_patch_stride=settings.patch_stride,
-        reuse_pos_emb=settings.reuse_pos_emb,
-        reuse_patch_emb=settings.reuse_patch_emb,
-        conv_stem=settings.conv_stem,
-        stem_base_channels=settings.stem_base_channels,
-        stem_hidden_dim=settings.D_h,
-        skip_filters=settings.skip_filters,
-        decoder=settings.decoder,
-        up_conv_d_decoder=settings.D_h,
-        up_conv_scale_factor=settings.patch_stride,
-        use_kpconv=settings.use_kpconv)
-    return model
+        out_channels = settings.out_channels,
+        base_channels=settings.base_channels,
+        n_cls=settings.n_classes,        
+        im_size=settings.image_size,        
+        window_swin_size=settings.window_swin_size,
+        shift_size=settings.shift_size,
+        dropout_rate=settings.dropout_rate     
+        ) 
 
+    return model
+ 
 
 class Experiment(object):
     def __init__(self, settings: Option):
         self.settings = settings
-
         # Init gpu
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        #torch.distributed.barrier()
         self.settings.check_path()
 
         # Set random seed
@@ -67,70 +59,26 @@ class Experiment(object):
         torch.backends.cudnn.benchmark = True
 
         # Init checkpoint
-        self.recorder = None
-        if tools.is_main_process():
+        self.recorder = None 
+        if tools.is_main_process(): 
             self.recorder = utils.tools.Recorder(self.settings, self.settings.save_path)
 
-        self.prediction_path = os.path.join(self.settings.save_path, 'preds')
-
-        self.epoch_start = 0
+        self.prediction_path = os.path.join(self.settings.save_path, 'preds') 
+        self.epoch_start = 0 
 
         # Init model
-        self.model = self._initModel()
-
+        self.model = self._initModel()       
         # Init trainer
-        self.trainer = Trainer(self.settings, self.model, self.recorder)
-
+        self.trainer = Trainer(self.settings, self.model, self.recorder) 
         # Load checkpoint
-        self._loadCheckpoint()
+        #self._loadCheckpoint() 
 
 
     def _initModel(self):
         # Model
-        model = build_rangevit_model(
-            self.settings,
-            pretrained_path=self.settings.pretrained_model)
-
-        # Freezing the ViT encoder weights.
-        if self.settings.freeze_vit_encoder:
-            print('==> Freeze the ViT encoder (without the pos_embed and stem)')
-            for param in model.rangevit.encoder.blocks.parameters():
-                param.requires_grad = False
-
-            model.rangevit.encoder.norm.weight.requires_grad = False
-            model.rangevit.encoder.norm.bias.requires_grad = False
-
-            # Unfreeze the LayerNorm layers
-            if self.settings.unfreeze_layernorm:
-                print('==> Unfreeze the LN layers')
-                model.rangevit.encoder.norm.weight.requires_grad = True
-                model.rangevit.encoder.norm.bias.requires_grad = True
-                for block_id in range(0, len(model.rangevit.encoder.blocks)):
-                    model.rangevit.encoder.blocks[block_id].norm1.weight.requires_grad = True
-                    model.rangevit.encoder.blocks[block_id].norm1.bias.requires_grad = True
-                    model.rangevit.encoder.blocks[block_id].norm2.weight.requires_grad = True
-                    model.rangevit.encoder.blocks[block_id].norm2.bias.requires_grad = True
-
-            if self.settings.unfreeze_attn:
-                print('==> Unfreeze the ATTN layers: qkv and proj')
-                for block_id in range(0, len(model.rangevit.encoder.blocks)):
-                    model.rangevit.encoder.blocks[block_id].attn.qkv.weight.requires_grad = True
-                    model.rangevit.encoder.blocks[block_id].attn.qkv.bias.requires_grad = True
-                    model.rangevit.encoder.blocks[block_id].attn.proj.weight.requires_grad = True
-                    model.rangevit.encoder.blocks[block_id].attn.proj.bias.requires_grad = True
-
-            if self.settings.unfreeze_ffn:
-                print('==> Unfreeze the FFN layers: mlp.fc1 and mlp.fc2')
-                for block_id in range(0, len(model.rangevit.encoder.blocks)):
-                    model.rangevit.encoder.blocks[block_id].mlp.fc1.weight.requires_grad = True
-                    model.rangevit.encoder.blocks[block_id].mlp.fc1.bias.requires_grad = True
-                    model.rangevit.encoder.blocks[block_id].mlp.fc2.weight.requires_grad = True
-                    model.rangevit.encoder.blocks[block_id].mlp.fc2.bias.requires_grad = True
-
-
+        model = build_Utrans_model(self.settings,pretrained_path=self.settings.pretrained_model)
         if self.recorder is not None:
             self.recorder.logger.info(f'model = {model}')
-
             stats = model.counter_model_parameters()
             if hasattr(model, 'counter_model_parameters'):
                 self.recorder.logger.info(f'Number of model parameters:')
@@ -140,51 +88,51 @@ class Experiment(object):
         return model
 
 
-    def _loadCheckpoint(self):
-        if self.settings.checkpoint is not None:
-            print(f'Resume training from checkpoint {self.settings.checkpoint}')
-            if not os.path.isfile(self.settings.checkpoint):
-                raise FileNotFoundError('checkpoint file not found: {}'.format(self.settings.checkpoint))
+    #def _loadCheckpoint(self):
+        # if self.settings.checkpoint is not None:
+        #     print(f'Resume training from checkpoint {self.settings.checkpoint}')
+        #     if not os.path.isfile(self.settings.checkpoint):
+        #         raise FileNotFoundError('checkpoint file not found: {}'.format(self.settings.checkpoint))
 
-            checkpoint_data = torch.load(self.settings.checkpoint, map_location='cpu')
+        #     checkpoint_data = torch.load(self.settings.checkpoint, map_location='cpu')
+        #     if self.settings.finetune_pretrained_model:
+        #         # When fine-tuning a segmentation model previously pre-trained to another dataset then it
+        #         # is necessary to adapt the (a) pos_embeds and (b) to remove the classification head.
+        #         image_size = self.model.utrans.encoder.image_size
+               
+        #         patch_stride = self.model.utrans.encoder.patch_stride
+        #         if (self.model.utrans.encoder.pos_embed.shape != checkpoint_data['model']['utrans.encoder.pos_embed'].shape):
+        #             assert self.model.utrans.encoder.pos_embed.shape[2] == checkpoint_data['model']['utrans.encoder.pos_embed'].shape[2]
+        #             gs_new_h = int(image_size[0] // patch_stride[0])
+        #             gs_new_w = int(image_size[1] // patch_stride[1])
+        #             num_extra_tokens = 1
+        #             assert (gs_new_h * gs_new_w + num_extra_tokens) == self.model.utrans.encoder.pos_embed.shape[1]
+        #             old_len = checkpoint_data['model']['utrans.encoder.pos_embed'].shape[1] - num_extra_tokens # remove one for the classification token
 
-            if self.settings.finetune_pretrained_model:
-                # When fine-tuning a segmentation model previously pre-trained to another dataset then it
-                # is necessary to adapt the (a) pos_embeds and (b) to remove the classification head.
-                image_size = self.model.rangevit.encoder.image_size
-                patch_stride = self.model.rangevit.encoder.patch_stride
-                if (self.model.rangevit.encoder.pos_embed.shape != checkpoint_data['model']['rangevit.encoder.pos_embed'].shape):
-                    assert self.model.rangevit.encoder.pos_embed.shape[2] == checkpoint_data['model']['rangevit.encoder.pos_embed'].shape[2]
-                    gs_new_h = int(image_size[0] // patch_stride[0])
-                    gs_new_w = int(image_size[1] // patch_stride[1])
-                    num_extra_tokens = 1
-                    assert (gs_new_h * gs_new_w + num_extra_tokens) == self.model.rangevit.encoder.pos_embed.shape[1]
-                    old_len = checkpoint_data['model']['rangevit.encoder.pos_embed'].shape[1] - num_extra_tokens # remove one for the classification token
+        #             gs_old_w = gs_new_w
+        #             gs_old_h = old_len // gs_old_w
+        #             checkpoint_data['model']['utrans.encoder.pos_embed'] = (
+        #                 resize_pos_embed(checkpoint_data['model']['utrans.encoder.pos_embed'],
+        #                                  grid_old_shape=(gs_old_h, gs_old_w),
+        #                                  grid_new_shape=(gs_new_h, gs_new_w),
+        #                                  num_extra_tokens=num_extra_tokens))
+        #         assert self.model.utrans.encoder.pos_embed.shape == checkpoint_data['model']['utrans.encoder.pos_embed'].shape
 
-                    gs_old_w = gs_new_w
-                    gs_old_h = old_len // gs_old_w
-                    checkpoint_data['model']['rangevit.encoder.pos_embed'] = (
-                        resize_pos_embed(checkpoint_data['model']['rangevit.encoder.pos_embed'],
-                                         grid_old_shape=(gs_old_h, gs_old_w),
-                                         grid_new_shape=(gs_new_h, gs_new_w),
-                                         num_extra_tokens=num_extra_tokens))
-                assert self.model.rangevit.encoder.pos_embed.shape == checkpoint_data['model']['rangevit.encoder.pos_embed'].shape
+        #         for key in ('utrans.kpclassifier.head.weight', 'utrans.kpclassifier.head.bias'):
+        #             del checkpoint_data['model'][key]
 
-                for key in ('rangevit.kpclassifier.head.weight', 'rangevit.kpclassifier.head.bias'):
-                    del checkpoint_data['model'][key]
+        #     checkpoint_data_model = checkpoint_data['model']
+        #     msg = self.model.load_state_dict(checkpoint_data_model, strict=(not self.settings.finetune_pretrained_model))
+        #     print(f'msg = {msg}')
 
-            checkpoint_data_model = checkpoint_data['model']
-            msg = self.model.load_state_dict(checkpoint_data_model, strict=(not self.settings.finetune_pretrained_model))
-            #print(f'msg = {msg}')
-
-            if not self.settings.finetune_pretrained_model:
-                print(f'==> Loading optimizer')
-                if self.settings.val_only is False:
-                    self.trainer.optimizer.load_state_dict(checkpoint_data['optimizer'])
-                self.epoch_start = checkpoint_data['epoch'] + 1
-
-                if ('fp16_scaler' in checkpoint_data) and (checkpoint_data['fp16_scaler'] is not None):
-                    self.trainer.fp16_scaler.load_state_dict(checkpoint_data['fp16_scaler'])
+        #     if not self.settings.finetune_pretrained_model:
+        #         print(f'==> Loading optimizer')
+        #         if self.settings.val_only is False:
+        #             self.trainer.optimizer.load_state_dict(checkpoint_data['optimizer'])
+        #         self.epoch_start = checkpoint_data['epoch'] + 1
+        #         print("self.e", self.epoch_start)
+        #         if ('fp16_scaler' in checkpoint_data) and (checkpoint_data['fp16_scaler'] is not None):
+        #             self.trainer.fp16_scaler.load_state_dict(checkpoint_data['fp16_scaler'])
 
 
     def run(self):
@@ -201,12 +149,9 @@ class Experiment(object):
                 self.recorder.logger.info('==== Total cost time: {}'.format(
                     datetime.timedelta(seconds=cost_time)))
             return
-        best_val_result = None
-
-        #self.trainer.scheduler.step(self.epoch_start*len(self.trainer.train_loader))
+        best_val_result = None       
 
         for epoch in range(self.epoch_start, self.settings.n_epochs):
-
             # Run one epoch
             self.trainer.run(epoch, mode='Train')
 

@@ -49,12 +49,7 @@ class Trainer(object):
         # Init optimizer
         self.optimizer = self._initOptimizer()
 
-        if tools.is_dist_avail_and_initialized():
-            self.model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.model).cuda()
-            self.model = nn.parallel.DistributedDataParallel(
-                	self.model, device_ids=[self.settings.gpu],
-                    find_unused_parameters=True)
-
+       
         # Get metrics
         self.metrics = utils.metrics.IOUEval(
             n_classes=self.settings.n_classes, device=torch.device('cpu'),
@@ -71,8 +66,8 @@ class Trainer(object):
 
         # For mixed precision training
         self.fp16_scaler = None
-        if self.settings.use_fp16:
-            self.fp16_scaler = torch.cuda.amp.GradScaler()
+        # if self.settings.use_fp16:
+        #     self.fp16_scaler = torch.cuda.amp.GradScaler()
 
     def _initOptimizer(self):
         params = self.model.parameters()
@@ -88,19 +83,20 @@ class Trainer(object):
             version = 'v1.0-mini' if self.settings.use_mini_version else 'v1.0-trainval'
             assert self.settings.use_trainval is False
 
+            #create dataset class with information
             trainset = dataset.nuScenes.Nuscenes(
-                dataroot=self.settings.data_root, version=version, split='train')
+                dataroot=self.settings.data_root, version=version, split='train') #nuScenes/dataset_nuscenes_V2.py
             valset = dataset.nuScenes.Nuscenes(
                 dataroot=self.settings.data_root, version=version, split='val')
-
-            self.mapped_cls_name = trainset.mapped_cls_name
+            
+           
+            self.mapped_cls_name = trainset.mapped_cls_name #'ignore': 0, 'barrier': 1,....'vegetation': 16
             self.ignore_class = [0]
-            self.cls_weight = np.ones((self.settings.n_classes))
+            self.cls_weight = np.ones((self.settings.n_classes))           
             self.cls_weight[0] = 0
             assert self.settings.test_split is False
             self.data_split = 'test' if self.settings.test_split else 'val'
-
-        # SemanticKitti dataset
+            
         elif self.settings.dataset == 'SemanticKitti':
             data_config_path = 'dataset/semantic_kitti/semantic-kitti.yaml'
             data_config = yaml.safe_load(open(data_config_path, 'r'))
@@ -144,6 +140,7 @@ class Trainer(object):
             raise ValueError(
                 'invalid dataset: {}'.format(self.settings.dataset))
 
+        #create dataLoader /dataset/range_view_loader.py
         self.train_range_loader = dataset.RangeViewLoader(
             dataset=trainset,
             config=self.settings.config,
@@ -157,7 +154,7 @@ class Trainer(object):
 
         collate_fn = dataset.custom_collate_kpconv_fn if self.settings.use_kpconv else None
         if tools.is_dist_avail_and_initialized():
-            train_sampler = torch.utils.data.distributed.DistributedSampler(trainset)
+            train_sampler = torch.utils.data.distributed.DistributedSampler(trainset)            
             val_sampler = torch.utils.data.distributed.DistributedSampler(valset, shuffle=False)
 
             train_loader = torch.utils.data.DataLoader(
@@ -194,7 +191,6 @@ class Trainer(object):
                 shuffle=False,
                 drop_last=False,
                 collate_fn=collate_fn)
-
             return train_loader, val_loader, None, None
 
     def _initCriterion(self):
@@ -239,187 +235,7 @@ class Trainer(object):
                 print_results=print_results,
                 save_results_path=save_results_path)           
 
-    # Method for training when using the KPConv layer
-    def run_without_kpconv(self, epoch, mode='Train', print_results=False, save_results_path=None):
-        if mode == 'Train':
-            dataloader = self.train_loader
-            self.model.train()
-            if self.train_sampler is not None:
-                self.train_sampler.set_epoch(epoch)
-        elif mode == 'Validation':
-            dataloader = self.val_loader
-            self.model.eval()
-        else:
-            raise ValueError('invalid mode: {}'.format(mode))
-
-        model_without_ddp = self.model
-        if hasattr(self.model, 'module'):
-            model_without_ddp = self.model.module
-
-        # Init metrics
-        loss_meter = tools.AverageMeter()
-        self.metrics.reset()
-
-        total_iter = len(dataloader)
-        t_start = time.time()
-
-        for i, (input_feature, input_label, input_mask) in enumerate(dataloader):
-            t_process_start = time.time()
-
-            # Feature: range, x, y, z, intensity
-            input_feature = input_feature.cuda() # shape: B x 5 x H x W
-
-            input_label = input_label.cuda().long()
-            input_label = input_label * input_label.ge(1).long()
-            input_mask = input_mask.cuda() * input_label.ge(1).float()
-
-            # Forward propagation
-            if mode == 'Train':
-                with torch.cuda.amp.autocast(self.fp16_scaler is not None):
-                    output = self.model(input_feature)
-                    output_softmax = F.softmax(output, dim=1)
-
-                    # Loss calculation
-                    total_loss, loss_lovasz, loss_focal = self.compute_losses(
-                        output, output_softmax, input_label, input_mask)
-
-                # Backward
-                self.optimizer.zero_grad()
-                if self.fp16_scaler is None:
-                    total_loss.backward()
-                    self.optimizer.step()
-                else:
-                    self.fp16_scaler.scale(total_loss).backward()
-                    self.fp16_scaler.step(self.optimizer)
-                    self.fp16_scaler.update()
-
-                # Update lr after backward (required by pytorch)
-                self.scheduler.step()
-            else:
-                with torch.no_grad():
-                    assert input_feature.shape[0] == 1 # validation batch size has to be 1
-
-                    # Validation
-                    im_meta = dict(flip=False)
-                    with torch.cuda.amp.autocast(self.fp16_scaler is not None):
-                        lidar_pred = inference(
-                            model_without_ddp.rangevit,
-                            [input_feature],
-                            [im_meta],
-                            ori_shape=input_feature.shape[2:4],
-                            window_size=self.settings.window_size,
-                            window_stride=self.settings.window_stride,
-                            batch_size=input_feature.shape[0],
-                            use_kpconv=False)
-
-                    output = lidar_pred.unsqueeze(0) # [C, H, W] ==> [1, C, H, W]
-                    output_softmax = F.softmax(output, dim=1)
-
-                    # Loss calculation
-                    total_loss, loss_lovasz, loss_focal = self.compute_losses(
-                        output, output_softmax, input_label, input_mask)
-
-
-            # Measure IoU and record loss
-            loss = total_loss.mean()
-            with torch.no_grad():
-                argmax = output.argmax(dim=1)
-                self.metrics.addBatch(argmax, input_label) # 2D predictions
-
-            loss_meter.update(loss.item(), input_feature.size(0))
-
-            # Timer logger
-            t_process_end = time.time()
-            data_cost_time = t_process_start - t_start
-            process_cost_time = t_process_end - t_process_start
-            self.remain_time.update(cost_time=(time.time() - t_start), mode=mode)
-            remain_time = datetime.timedelta(
-                seconds=self.remain_time.getRemainTime(
-                    epoch=epoch, iters=i, total_iter=total_iter, mode=mode
-                ))
-            t_start = time.time()
-
-            # Logging
-            if (i % self.settings.log_frequency == 0) or (i == total_iter-1):
-                with torch.no_grad():
-                    mean_iou, _, mean_acc, _ = self.metrics.getIoUnAcc()
-                if self.recorder is not None:
-                    for g in self.optimizer.param_groups:
-                        lr = g['lr']
-                        break
-                    log_str = '>>> {} E[{:03d}|{:03d}] I[{:04d}|{:04d}] DT[{:.3f}] PT[{:.3f}] '.format(
-                        mode, self.settings.n_epochs, epoch+1, total_iter, i+1, data_cost_time, process_cost_time)
-                    log_str += 'LR {} Loss {:0.4f} Acc {:0.4f} IOU {:0.4F} '.format(
-                        lr, loss.item(), mean_acc.item(), mean_iou.item())
-                    log_str += 'RT {}'.format(remain_time)
-                    self.recorder.logger.info(log_str)
-
-        with torch.no_grad():
-            mean_acc, class_acc = self.metrics.getAcc()
-            mean_recall, class_recall = self.metrics.getRecall()
-            mean_iou, class_iou = self.metrics.getIoU()
-
-            metrics_dict = {
-                'mean_acc': mean_acc,
-                'class_acc': class_acc,
-                'mean_recall': mean_recall,
-                'class_recall': class_recall,
-                'mean_iou': mean_iou,
-                'class_iou': class_iou,
-                'conf_matrix': self.metrics.conf_matrix.clone().cpu(),
-            }
-
-        loss_dict = {
-                'loss_meter_avg': loss_meter.avg,
-                'loss_focal': loss_focal,
-                'loss_lovasz': loss_lovasz,
-            }
-
-        # Print results
-        if self.recorder is not None:
-            # Print train pixel-wise evaluation results
-            if mode == 'Train':
-                if (epoch % self.settings.train_result_frequency == 0) or (epoch == self.settings.n_epochs-1):
-                    eval_results(pixel_or_point='Pixel',
-                                 settings=self.settings,
-                                 recorder=self.recorder,
-                                 metrics_dict=metrics_dict,
-                                 dataloader=self.train_range_loader,
-                                 print_data_distribution=True)
-
-            # Print validation pixel-wise evaluation results
-            if mode == 'Validation' and (print_results or epoch == self.settings.n_epochs-1):
-                eval_results(pixel_or_point='Pixel',
-                             settings=self.settings,
-                             recorder=self.recorder,
-                             metrics_dict=metrics_dict,
-                             dataloader=self.val_range_loader,
-                             print_data_distribution=True)
-
-            # Tensorboard logger
-            tensorboard_logger(epoch=epoch,
-                               mode=mode,
-                               recorder=self.recorder,
-                               metrics_dict=metrics_dict,
-                               loss_dict=loss_dict,
-                               lr=lr,
-                               mapped_cls_name=self.mapped_cls_name)
-
-            # Results at the end of the epoch
-            log_str = '>>> {} Loss {:0.4f} Acc {:0.4f} IOU {:0.4F} Recall {:0.4f}'.format(
-                mode, loss_meter.avg, mean_acc.item(), mean_iou.item(), mean_recall.item())
-            self.recorder.logger.info(log_str)
-
-
-        result_metrics = {
-            'Acc': mean_acc.item(),
-            'IOU': mean_iou.item(),
-            'Recall': mean_recall.item()
-        }
-
-        return result_metrics
-
-    # Method for training and validation when using the KPConv layer
+   #Method for training and validation when using the KPConv layer
     def run_with_kpconv(self, epoch, mode='Train', print_results=False, save_results_path=None):
         if mode == 'Train':
             dataloader = self.train_loader
@@ -449,7 +265,7 @@ class Trainer(object):
             t_process_start = time.time()
 
             # 2D inputs
-            input_feature = batch_dict['input2d'].cuda(non_blocking=True)
+            input_feature = batch_dict['input2d'].cuda(non_blocking=True)            
             assert self.settings.in_channels == 5
 
             # 3D inputs
@@ -459,7 +275,7 @@ class Trainer(object):
             knns = batch_dict['knns'].cuda(non_blocking=True)
             labels3d = batch_dict['labels'].cuda(non_blocking=True).unsqueeze(1).unsqueeze(2)
             labels3d = labels3d * labels3d.ge(1).long()
-            mask_3d = labels3d.ge(1).float()
+            mask_3d = labels3d.ge(1).float()            
             num_points = batch_dict['num_points']
 
             # Forward propagation
@@ -493,7 +309,7 @@ class Trainer(object):
                     im_meta = dict(flip=False)
                     with torch.cuda.amp.autocast(self.fp16_scaler is not None):
                         output_features2d = inference(
-                            model_without_ddp.rangevit,
+                            model_without_ddp.utrans,
                             [input_feature],
                             [im_meta],
                             ori_shape=input_feature.shape[2:4],
@@ -505,21 +321,25 @@ class Trainer(object):
                         output_features2d = output_features2d.unsqueeze(0) # [C, H, W] ==> [1, C, H, W]
 
                         # Apply KPConv layer
-                        output3d = model_without_ddp.rangevit.kpclassifier(
+                        output3d = model_without_ddp.utrans.kpclassifier(
                             output_features2d, px, py, pxyz, knns, num_points)
 
+
+                    output3d_softmax = F.softmax(output3d, dim=1)
+
+                        
                     output3d_softmax = F.softmax(output3d, dim=1)
 
                     # Loss calculation
                     total_loss, loss_lovasz, loss_focal = self.compute_losses(
-                        output3d, output3d_softmax, labels3d, mask_3d)
-
+                        output3d, output3d_softmax, labels3d, mask_3d)                    
+                    
             # Measure IoU and record loss
             loss = total_loss.mean()
             with torch.no_grad():
                 argmax3d = output3d.argmax(dim=1)
                 self.metrics.addBatch(argmax3d, labels3d) # 3D predictions
-
+                
             loss_meter.update(loss.item(), input_feature.size(0))
 
             # Save the predictions
@@ -533,7 +353,8 @@ class Trainer(object):
                     pred_path = os.path.join(save_results_path, 'lidarseg', self.data_split)
                     grtruth_path = os.path.join(save_results_path, 'lidarseg', 'grtruth')
                     nu_dataset = self.val_loader.dataset.dataset                   
-                    lidar_token = nu_dataset.getFilename(index)
+                    lidar_token = nu_dataset.getFilename(index)                   
+                    
                     if not os.path.isdir(pred_path):
                         os.makedirs(pred_path)
                     if not os.path.isdir(grtruth_path):

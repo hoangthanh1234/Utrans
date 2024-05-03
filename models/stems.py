@@ -18,6 +18,10 @@ import torch.nn.functional as F
 
 from .model_utils import get_grid_size_1d, get_grid_size_2d
 
+from .model_utils import ConvBNReLuK1, ConvBNReLuK3, ConvBNReLuK3D2, ConvBNReLuK7, ConvBNReLuK7D2
+from .MRCIAM import MRCIAM
+from .SCA import sa_layer
+
 
 class PatchEmbedding(nn.Module):
     def __init__(self, image_size, patch_size, patch_stride, embed_dim, channels, resize_emb=True):
@@ -81,8 +85,14 @@ class ConvStem(nn.Module):
         self.dropout_ratio = 0.2
 
         # Build stem, similar to the design in https://github.com/TiagoCortinhal/SalsaNext
+        self.MRCIAM_xyz = MRCIAM(3, base_channels)
+        self.MRCIAM_1d = MRCIAM(1, base_channels)
+        self.MRCIAM_1r = MRCIAM(1, base_channels)
+        self.sca = sa_layer(base_channels*3)
+        self. reduce_channel = ConvBNReLuK1(base_channels*3, base_channels)
+        
         self.conv_block = nn.Sequential(
-            ResContextBlock(in_channels, base_channels),
+            ResContextBlock(base_channels, base_channels),
             ResContextBlock(base_channels, base_channels),
             ResContextBlock(base_channels, base_channels),
             ResBlock(base_channels, hidden_dim, self.dropout_ratio, pooling=False, drop_out=False))
@@ -91,6 +101,9 @@ class ConvStem(nn.Module):
         assert patch_stride[1] % 2 == 0
         kernel_size = (patch_stride[0] + 1, patch_stride[1] + 1)
         padding = (patch_stride[0] // 2, patch_stride[1] // 2)
+
+       
+
         self.proj_block = nn.Sequential(
              nn.AvgPool2d(kernel_size=kernel_size, stride=patch_stride, padding=padding),
              nn.Conv2d(hidden_dim, embed_dim, kernel_size=1))
@@ -106,7 +119,19 @@ class ConvStem(nn.Module):
 
     def forward(self, x):
         B, C, H, W = x.shape  # B, in_channels, image_size[0], image_size[1]
-        x_base = self.conv_block(x) # B, hidden_dim, image_size[0], image_size[1]
+
+        x1 = x[:, 0:3,:,:] #xyz
+        x2 = x[:, 3:4,:,:] #i_intensive
+        x3 = x[:, 4:5,:,:] #d_depth
+        
+        MRCIAM_xyz = self.MRCIAM_xyz(x1)
+        MRCIAM_i = self.MRCIAM_1r(x2)
+        MRCIAM_r = self.MRCIAM_1d(x3)
+        MRCIAM_plus = torch.cat((MRCIAM_xyz, MRCIAM_i, MRCIAM_r), dim=1)
+        SCA = self.sca(MRCIAM_plus) #Change position between SCA and reduce changel compare to TranRV
+        reduce_channel = self.reduce_channel(SCA)
+
+        x_base = self.conv_block(reduce_channel) # B, hidden_dim, image_size[0], image_size[1]
         x = self.proj_block(x_base)
         if self.flatten:
             x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
